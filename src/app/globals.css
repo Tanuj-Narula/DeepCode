@@ -1,0 +1,374 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Design System Tokens ─── */
+:root {
+  /* Minimalist / Professional / Non-AI generated palette */
+  --dc-bg-primary: #09090b;   /* zinc-950 */
+  --dc-bg-secondary: #09090b; /* zinc-950 */
+  --dc-bg-tertiary: #18181b;  /* zinc-900 */
+  --dc-bg-elevated: #27272a;  /* zinc-800 */
+
+  --dc-text-primary: #fafafa; /* zinc-50 */
+  --dc-text-secondary: #a1a1aa; /* zinc-400 */
+  --dc-text-muted: #71717a;   /* zinc-500 */
+  --dc-text-link: #fb923c;    /* orange-400 */
+
+  /* Neutral/Earthy Accents instead of Blue/Purple */
+  --dc-accent-blue: #ea580c;  /* orange-600 */
+  --dc-accent-purple: #f97316; /* orange-500 */
+  --dc-accent-teal: #fb923c;   /* orange-400 */
+  --dc-accent-orange: #f59e0b; /* amber-500 */
+
+  --dc-success: #10b981;
+  --dc-success-muted: rgba(16, 185, 129, 0.1);
+  --dc-warning: #f59e0b;
+  --dc-warning-muted: rgba(245, 158, 11, 0.1);
+  --dc-error: #ef4444;
+  --dc-error-muted: rgba(239, 68, 68, 0.1);
+  --dc-info: #a1a1aa;
+  --dc-info-muted: rgba(161, 161, 170, 0.1);
+
+  --dc-border: #27272a;       /* zinc-800 */
+  --dc-border-accent: #3f3f46; /* zinc-700 */
+
+  --dc-heatmap-green: rgba(16, 185, 129, 0.6);
+  --dc-heatmap-amber: rgba(245, 158, 11, 0.6);
+  --dc-heatmap-red: rgba(239, 68, 68, 0.6);
+  --dc-heatmap-grey: rgba(63, 63, 70, 0.6);
+
+  --dc-radius-sm: 4px;
+  --dc-radius-md: 6px;
+  --dc-radius-lg: 8px;
+  --dc-radius-xl: 12px;
+
+  /* Crisp Shadows instead of Glows */
+  --dc-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --dc-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --dc-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --dc-shadow-glow-blue: none;
+  --dc-shadow-glow-purple: none;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+[data-theme='light'], .light {
+  --dc-bg-primary: #ffffff;
+  --dc-bg-secondary: #f4f4f5; /* zinc-100 */
+  --dc-bg-tertiary: #fafafa;  /* zinc-50 */
+  --dc-bg-elevated: #ffffff;
+
+  --dc-text-primary: #09090b; /* zinc-950 */
+  --dc-text-secondary: #52525b; /* zinc-600 */
+  --dc-text-muted: #71717a;   /* zinc-500 */
+  --dc-text-link: #ea580c;    /* orange-600 */
+
+  --dc-border: #e4e4e7;       /* zinc-200 */
+  --dc-border-accent: #d4d4d8; /* zinc-300 */
+
+  --dc-heatmap-green: rgba(16, 185, 129, 0.3);
+  --dc-heatmap-amber: rgba(245, 158, 11, 0.3);
+  --dc-heatmap-red: rgba(239, 68, 68, 0.3);
+  --dc-heatmap-grey: rgba(63, 63, 70, 0.2);
+}
+
+/* Variables already defined in :root above, no need for @theme in v3 if we use var() */
+
+/* ─── Global Base Styles ─── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--dc-bg-primary);
+  color: var(--dc-text-primary);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar Styles ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--dc-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dc-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dc-text-muted);
+}
+
+/* ─── Monaco Editor Overrides ─── */
+.monaco-editor {
+  border-radius: var(--dc-radius-md) !important;
+}
+
+.monaco-editor .margin {
+  background: var(--dc-bg-secondary) !important;
+}
+
+/* Heatmap gutter decorations */
+.dc-line-green {
+  background: var(--dc-heatmap-green) !important;
+  opacity: 0.3;
+}
+
+.dc-line-amber {
+  background: var(--dc-heatmap-amber) !important;
+  opacity: 0.3;
+}
+
+.dc-line-red {
+  background: var(--dc-heatmap-red) !important;
+  opacity: 0.3;
+}
+
+.dc-line-grey {
+  background: var(--dc-heatmap-grey) !important;
+  opacity: 0.2;
+}
+
+/* Active line highlight for "Why this line?" */
+.dc-active-line {
+  background: rgba(210, 153, 34, 0.15) !important;
+  border-left: 3px solid var(--dc-warning) !important;
+}
+
+/* CodeWatch Passive Scan Decorations (Feature 4) */
+.codewatch-warning {
+  border-bottom: 2px wavy var(--dc-warning) !important;
+  cursor: help;
+  z-index: 10;
+}
+
+.codewatch-info {
+  border-bottom: 2px dashed var(--dc-info) !important;
+  cursor: help;
+  z-index: 10;
+}
+
+.codewatch-warning-glyph {
+  background-color: var(--dc-warning) !important;
+  width: 4px !important;
+  margin-left: 2px !important;
+  border-radius: 2px;
+}
+
+.codewatch-info-glyph {
+  background-color: var(--dc-info) !important;
+  width: 4px !important;
+  margin-left: 2px !important;
+  border-radius: 2px;
+}
+
+/* ─── Custom Utility Classes ─── */
+.glass-panel {
+  background: rgba(10, 10, 12, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--dc-shadow-lg);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--dc-accent-blue), var(--dc-accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.score-badge.green {
+  background: var(--dc-success-muted);
+  color: var(--dc-success);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.score-badge.amber {
+  background: var(--dc-warning-muted);
+  color: var(--dc-warning);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.score-badge.red {
+  background: var(--dc-error-muted);
+  color: var(--dc-error);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+/* ─── Animations ─── */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(56, 139, 253, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(56, 139, 253, 0.4);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--dc-bg-tertiary) 25%,
+    var(--dc-bg-elevated) 50%,
+    var(--dc-bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out;
+}
+
+/* ─── Concept Chip Styles ─── */
+.concept-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid var(--dc-border);
+  background: var(--dc-bg-tertiary);
+  color: var(--dc-text-secondary);
+}
+
+.concept-chip:hover {
+  background: var(--dc-bg-elevated);
+  color: var(--dc-text-primary);
+  border-color: var(--dc-accent-blue);
+}
+
+/* ─── Button Base Styles ─── */
+.dc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--dc-radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  outline: none;
+}
+
+.dc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dc-btn-primary {
+  background: linear-gradient(135deg, var(--dc-accent-blue), var(--dc-accent-purple));
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.dc-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--dc-shadow-glow-blue), 0 6px 20px rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.dc-btn-secondary {
+  background: var(--dc-bg-tertiary);
+  color: var(--dc-text-primary);
+  border: 1px solid var(--dc-border);
+}
+
+.dc-btn-secondary:hover:not(:disabled) {
+  background: var(--dc-bg-elevated);
+  border-color: var(--dc-accent-blue);
+}
+
+.dc-btn-ghost {
+  background: transparent;
+  color: var(--dc-text-secondary);
+}
+
+.dc-btn-ghost:hover:not(:disabled) {
+  color: var(--dc-text-primary);
+  background: var(--dc-bg-tertiary);
+}
+
+/* ─── Sidebar / Panel ─── */
+.sidebar-panel {
+  background: var(--dc-bg-secondary);
+  border-left: 1px solid var(--dc-border);
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* ─── Hint Cards ─── */
+.hint-card {
+  padding: 16px;
+  border-radius: var(--dc-radius-md);
+  border: 1px solid var(--dc-border);
+  background: var(--dc-bg-tertiary);
+}
+
+.hint-card.hint-1 {
+  border-left: 3px solid var(--dc-accent-blue);
+}
+
+.hint-card.hint-2 {
+  border-left: 3px solid var(--dc-accent-purple);
+}
+
+.hint-card.hint-3 {
+  border-left: 3px solid var(--dc-accent-teal);
+}

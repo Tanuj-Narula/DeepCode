@@ -1,0 +1,1075 @@
+"use client";
+
+import { useState, useCallback, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import toast from "react-hot-toast";
+import { useEditorStore } from "@/stores/editorStore";
+import { useSessionStore } from "@/stores/sessionStore";
+import type { Evaluation, HintProgress, HeatmapStatus } from "@/types/schemas";
+import { RefreshCw, Target, BookOpen, HelpCircle, Lightbulb, XCircle, Beaker, CheckCircle2, Sparkles, Info, X, Trophy } from "lucide-react";
+
+
+export default function TriviaPanel() {
+  const { scopedFunction, language } = useEditorStore();
+  const {
+    questions,
+    currentQuestionIndex,
+    userAnswers,
+    evaluations,
+    hintProgress,
+    confidenceRatings,
+    retryResults,
+    isSeedSession,
+    seedConcept,
+    triviaComplete,
+    triviaLoading,
+    currentAlert,
+    setCodeWatchAlert,
+    setQuestions,
+    totalScore,
+    maxPossibleScore,
+    setCurrentQuestionIndex,
+    setUserAnswer,
+    setEvaluation,
+    addHint,
+    setConfidenceRating,
+    setRetryResult,
+    setTriviaComplete,
+    setTriviaLoading,
+    updateScore,
+    setHeatmapData,
+    addSessionResult,
+    setMode,
+    sessionResults,
+    setRoleReadiness,
+  } = useSessionStore();
+
+  const [answerInput, setAnswerInput] = useState("");
+  const [evaluating, setEvaluating] = useState(false);
+  const [hintLoading, setHintLoading] = useState(false);
+  const [retryMode, setRetryMode] = useState(false);
+  const [evaluatingReadiness, setEvaluatingReadiness] = useState(false);
+  const [completeTimeMs, setCompleteTimeMs] = useState<number | null>(null);
+
+  // Track session duration when it finishes to avoid impure render calls
+  useEffect(() => {
+    if (triviaComplete && !completeTimeMs) {
+      const sessionStart = useSessionStore.getState().sessionStartTime;
+      if (sessionStart) {
+        setCompleteTimeMs(Date.now() - sessionStart);
+      }
+    } else if (!triviaComplete && completeTimeMs !== null) {
+      setCompleteTimeMs(null);
+    }
+  }, [triviaComplete, completeTimeMs]);
+
+  const handleCheckReadiness = async () => {
+    const role = window.prompt("Target Role? (frontend_mid, backend_mid, fullstack_mid)", "fullstack_mid");
+    if (!role) return;
+
+    setEvaluatingReadiness(true);
+    toast.loading("Benchmarking your performance against role standards...", { id: "readiness-gen" });
+
+    try {
+      const res = await fetch("/api/role-readiness", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role, sessionHistory: sessionResults }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setRoleReadiness(data);
+      toast.success("Role Readiness Report generated!", { id: "readiness-gen" });
+    } catch {
+      toast.error("Failed to generate readiness report", { id: "readiness-gen" });
+    } finally {
+      setEvaluatingReadiness(false);
+    }
+  };
+
+  // Generate questions
+  const handleGenerateQuestions = useCallback(async () => {
+    if (!scopedFunction) {
+      toast.error("Move your cursor inside a function first");
+      return;
+    }
+
+    setTriviaLoading(true);
+
+    try {
+      const res = await fetch("/api/generate-questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: scopedFunction, language }),
+      });
+
+      if (!res.ok) throw new Error("Failed to generate questions");
+
+      const data = await res.json();
+      setQuestions(data.questions);
+      toast.success("3 questions generated — let's go!");
+    } catch {
+      toast.error("Failed to generate questions. Check your API key.");
+    } finally {
+      setTriviaLoading(false);
+    }
+  }, [scopedFunction, language, setQuestions, setTriviaLoading]);
+
+  // Submit answer
+  const handleSubmitAnswer = useCallback(async () => {
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ || !answerInput.trim()) return;
+
+    setEvaluating(true);
+
+    try {
+      const res = await fetch("/api/evaluate-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: currentQ.question,
+          code: scopedFunction,
+          expectedKeywords: currentQ.expected_keywords,
+          userAnswer: answerInput,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Evaluation failed");
+
+      const evaluation: Evaluation = await res.json();
+
+      if (retryMode) {
+        // Retry scoring
+        const retryCorrect = evaluation.correct;
+        setRetryResult(currentQuestionIndex, retryCorrect);
+        if (retryCorrect) {
+          updateScore(2);
+          toast.success("Understanding Confirmed! +2 pts");
+        } else {
+          toast("Keep practising — review the explanation", { icon: <BookOpen className="inline" size={16} /> });
+        }
+        setRetryMode(false);
+      } else {
+        // First attempt
+        setUserAnswer(currentQuestionIndex, answerInput);
+        setEvaluation(currentQuestionIndex, evaluation);
+        updateScore(evaluation.score_awarded);
+
+        if (evaluation.correct) {
+          toast.success(`Correct! +${evaluation.score_awarded} pts`);
+        } else if (evaluation.partial) {
+          toast("Partial — close but not quite", { icon: <HelpCircle className="inline" size={16} /> });
+        } else {
+          toast("Not quite — try a hint?", { icon: <Lightbulb className="inline" size={16} /> });
+        }
+
+      }
+
+      setAnswerInput("");
+    } catch {
+      toast.error("Evaluation failed — try again");
+    } finally {
+      setEvaluating(false);
+    }
+  }, [
+    questions,
+    currentQuestionIndex,
+    answerInput,
+    scopedFunction,
+    retryMode,
+    setUserAnswer,
+    setEvaluation,
+    updateScore,
+    setRetryResult,
+  ]);
+
+  // Request hint
+  const handleRequestHint = useCallback(async () => {
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ) return;
+
+    const currentHintProgress = hintProgress[currentQuestionIndex];
+    const nextLevel = ((currentHintProgress?.currentLevel ?? 0) + 1) as 1 | 2 | 3;
+
+    if (nextLevel > 3) return;
+
+    setHintLoading(true);
+
+    try {
+      const previousHintTexts =
+        currentHintProgress?.hints.map((h) => h.hint_text) ?? [];
+
+      const res = await fetch("/api/generate-hint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: currentQ.question,
+          code: scopedFunction,
+          userAnswer: userAnswers[currentQuestionIndex] ?? "",
+          hintLevel: nextLevel,
+          previousHints: previousHintTexts,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Hint generation failed");
+
+      const hint = await res.json();
+
+      const updatedHints: HintProgress = {
+        currentLevel: nextLevel,
+        hints: [...(currentHintProgress?.hints ?? []), hint],
+      };
+
+      addHint(currentQuestionIndex, updatedHints);
+    } catch {
+      toast.error("Failed to generate hint");
+    } finally {
+      setHintLoading(false);
+    }
+  }, [
+    questions,
+    currentQuestionIndex,
+    hintProgress,
+    scopedFunction,
+    userAnswers,
+    addHint,
+  ]);
+
+  // Move to next question or finish
+  const handleNext = useCallback(() => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setAnswerInput("");
+      setRetryMode(false);
+    } else {
+      // Session complete — generate heatmap
+      const heatmap: Record<number, HeatmapStatus> = {};
+      const editorCode = useEditorStore.getState().code;
+      const lines = editorCode.split("\n");
+
+      questions.forEach((q, idx) => {
+        const evaluation = evaluations[idx];
+        const scopeStart = useEditorStore.getState().scopeStartLine ?? 1;
+
+        // Color lines based on answers
+        const linesPerQuestion = Math.ceil(lines.length / 3);
+        const start = scopeStart + idx * linesPerQuestion;
+        const end = Math.min(start + linesPerQuestion, lines.length);
+
+        for (let i = start; i <= end; i++) {
+          if (evaluation?.correct) {
+            heatmap[i] = "green";
+          } else if (evaluation?.partial) {
+            heatmap[i] = "amber";
+          } else if (evaluation) {
+            heatmap[i] = "red";
+          } else {
+            heatmap[i] = "grey";
+          }
+        }
+      });
+
+      setHeatmapData(heatmap);
+      setTriviaComplete(true);
+
+      // Persist this session to history (Feature 5)
+      const score = (totalScore / (questions.length * 10)) * 100;
+      addSessionResult({
+          timestamp: Date.now(),
+          concepts: questions.map(q => q.concept_tag || "logic"),
+          avgScore: score,
+          totalQuestions: questions.length
+      });
+
+      toast.success("Session complete! Check your results.");
+    }
+  }, [
+    currentQuestionIndex,
+    questions,
+    evaluations,
+    setCurrentQuestionIndex,
+    setHeatmapData,
+    setTriviaComplete,
+    addSessionResult,
+    totalScore,
+  ]);
+
+  // Handle retry after Hint 3
+  const handleRetry = useCallback(() => {
+    setRetryMode(true);
+    setAnswerInput("");
+  }, []);
+
+  const currentQuestion = questions[currentQuestionIndex];
+  const currentEvaluation = evaluations[currentQuestionIndex];
+  const currentHints = hintProgress[currentQuestionIndex];
+  const currentConfidence = confidenceRatings[currentQuestionIndex];
+  const currentRetry = retryResults[currentQuestionIndex];
+  const canShowHint =
+    currentEvaluation && !currentEvaluation.correct && (currentHints?.currentLevel ?? 0) < 3;
+  const showRetryButton =
+    currentHints?.currentLevel === 3 && currentRetry === undefined && !retryMode;
+
+  // ─── Empty State ───
+  if (questions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--dc-accent-blue), var(--dc-accent-purple))",
+              boxShadow: "var(--dc-shadow-glow-blue)",
+            }}
+          >
+            <Beaker className="inline" size={18} />
+          </div>
+          <h2
+            className="text-xl font-bold mb-2"
+            style={{ color: "var(--dc-text-primary)" }}
+          >
+            Trivia Mode
+          </h2>
+          <p
+            className="text-sm mb-6 max-w-xs"
+            style={{ color: "var(--dc-text-secondary)" }}
+          >
+            Paste code in the editor, place your cursor inside a function, and
+            prove you understand it.
+          </p>
+          <button
+            id="test-me-btn"
+            onClick={handleGenerateQuestions}
+            disabled={triviaLoading || !scopedFunction}
+            className="dc-btn dc-btn-primary text-base px-8 py-3"
+          >
+            {triviaLoading ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Generating...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2"><Target className="inline" size={16} /> Test Me</span>
+            )}
+          </button>
+          {!scopedFunction && (
+            <p className="text-xs mt-3" style={{ color: "var(--dc-text-muted)" }}>
+              Place your cursor inside a function first
+            </p>
+          )}
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ─── Session Complete ───
+  if (triviaComplete) {
+    const scorePercent =
+      maxPossibleScore > 0
+        ? Math.round((totalScore / maxPossibleScore) * 100)
+        : 0;
+    const scoreColor =
+      scorePercent >= 80
+        ? "var(--dc-success)"
+        : scorePercent >= 50
+        ? "var(--dc-warning)"
+        : "var(--dc-error)";
+
+    // Calculate time taken
+    const timeTakenMs = completeTimeMs || 0;
+    const timeTakenMin = Math.floor(timeTakenMs / 60000);
+    const timeTakenSec = Math.floor((timeTakenMs % 60000) / 1000);
+    const timeTakenStr = timeTakenMin > 0 ? `${timeTakenMin}m ${timeTakenSec}s` : `${timeTakenSec}s`;
+
+    // Count answered questions
+    const answeredCount = Object.keys(evaluations).length;
+
+    // Get concept results
+    const conceptResults = questions.map((q, idx) => ({
+      tag: q.concept_tag,
+      correct: evaluations[idx]?.correct ?? false,
+      partial: evaluations[idx]?.partial ?? false,
+    }));
+
+    const strongConcepts = conceptResults.filter((c) => c.correct);
+    const weakConcepts = conceptResults.filter((c) => !c.correct);
+
+    // Resource links for weak concepts
+    const conceptResourceLinks: Record<string, string> = {
+      async_await: "https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Asynchronous/Promises",
+      error_handling: "https://javascript.info/error-handling",
+      closures: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Closures",
+      destructuring: "https://javascript.info/destructuring-assignment",
+      promises: "https://javascript.info/promise-basics",
+      fetch_api: "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+      optional_chaining: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Optional_chaining",
+      spread_operator: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax",
+      type_coercion: "https://javascript.info/type-conversions",
+      scope: "https://developer.mozilla.org/en-US/docs/Glossary/Scope",
+      default_parameters: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/Default_parameters",
+    };
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="flex flex-col p-6 h-full overflow-y-auto"
+      >
+        <div
+          className="rounded-2xl p-6 mb-4"
+          style={{
+            background: "var(--dc-bg-tertiary)",
+            border: "1px solid var(--dc-border)",
+          }}
+        >
+          <h2
+            className="text-lg font-bold mb-1"
+            style={{ color: "var(--dc-text-primary)" }}
+          >
+            Session Complete <Sparkles className="inline text-dc-accent-orange" size={24} />
+          </h2>
+          <p className="text-sm" style={{ color: "var(--dc-text-secondary)" }}>
+            Here&apos;s how you did
+          </p>
+
+          {/* Score Display */}
+          <motion.div
+            initial={{ scale: 0.8 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.2, type: "spring" }}
+            className="text-center my-6"
+          >
+            <div
+              className="text-5xl font-bold mb-1"
+              style={{ color: scoreColor }}
+            >
+              {scorePercent}%
+            </div>
+            <div
+              className="text-sm"
+              style={{ color: "var(--dc-text-secondary)" }}
+            >
+              {totalScore} / {maxPossibleScore} points
+            </div>
+          </motion.div>
+
+          {/* Session Stats */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.25 }}
+            className="grid grid-cols-3 gap-3 mb-5"
+          >
+            <div
+              className="text-center p-3 rounded-lg"
+              style={{ background: "var(--dc-bg-elevated)" }}
+            >
+              <div className="text-lg font-bold" style={{ color: "var(--dc-text-primary)" }}>
+                {answeredCount}/{questions.length}
+              </div>
+              <div className="text-xs" style={{ color: "var(--dc-text-muted)" }}>
+                Answered
+              </div>
+            </div>
+            <div
+              className="text-center p-3 rounded-lg"
+              style={{ background: "var(--dc-bg-elevated)" }}
+            >
+              <div className="text-lg font-bold" style={{ color: "var(--dc-text-primary)" }}>
+                {timeTakenStr}
+              </div>
+              <div className="text-xs" style={{ color: "var(--dc-text-muted)" }}>
+                Time Taken
+              </div>
+            </div>
+            <div
+              className="text-center p-3 rounded-lg"
+              style={{ background: "var(--dc-bg-elevated)" }}
+            >
+              <div className="text-lg font-bold" style={{ color: "var(--dc-text-primary)" }}>
+                {strongConcepts.length}
+              </div>
+              <div className="text-xs" style={{ color: "var(--dc-text-muted)" }}>
+                Mastered
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Concept Breakdown */}
+          <div className="space-y-2">
+            <h3
+              className="text-sm font-semibold"
+              style={{ color: "var(--dc-text-secondary)" }}
+            >
+              Concept Breakdown
+            </h3>
+            {conceptResults.map((c, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 + idx * 0.1 }}
+                className="flex items-center justify-between py-2 px-3 rounded-lg"
+                style={{
+                  background: "var(--dc-bg-elevated)",
+                  border: "1px solid var(--dc-border-light)",
+                }}
+              >
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: "var(--dc-text-primary)" }}
+                >
+                  {c.tag.replace(/_/g, " ")}
+                </span>
+                <span
+                  className={`score-badge ${
+                    c.correct ? "green" : c.partial ? "amber" : "red"
+                  }`}
+                >
+                  {c.correct ? "✓ Strong" : c.partial ? "~ Developing" : "✗ Weak"}
+                </span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        {/* Revisit Resources — for weak concepts */}
+        {weakConcepts.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="rounded-2xl p-4 mb-3"
+            style={{
+              background: "var(--dc-bg-tertiary)",
+              border: "1px solid var(--dc-border)",
+            }}
+          >
+            <h4
+              className="text-xs font-semibold uppercase tracking-wider mb-3"
+              style={{ color: "var(--dc-warning)" }}
+            >
+              📚 Revisit These Concepts
+            </h4>
+            <div className="space-y-2">
+              {weakConcepts.map((c, idx) => {
+                const resourceUrl =
+                  conceptResourceLinks[c.tag] ||
+                  `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(c.tag.replace(/_/g, " "))}`;
+                return (
+                  <a
+                    key={idx}
+                    href={resourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between p-2 rounded-lg text-sm transition-all duration-150"
+                    style={{
+                      background: "var(--dc-bg-elevated)",
+                      color: "var(--dc-text-link)",
+                      textDecoration: "none",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "var(--dc-bg-surface)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "var(--dc-bg-elevated)")
+                    }
+                  >
+                    <span>{c.tag.replace(/_/g, " ")}</span>
+                    <span style={{ color: "var(--dc-text-muted)" }}>↗ MDN / JS.info</span>
+                  </a>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Tip */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="rounded-2xl p-4"
+          style={{
+            background: "var(--dc-info-muted)",
+            border: "1px solid rgba(88, 166, 255, 0.2)",
+          }}
+        >
+          <p className="text-sm" style={{ color: "var(--dc-info)" }}>
+            <Lightbulb className="inline" size={16} /> <strong>Tip:</strong> Switch to{" "}
+            <strong>Understand</strong> mode to explore the concepts you&apos;re weak
+            on. Click any line for a detailed explanation.
+          </p>
+        </motion.div>
+
+        {/* Role Readiness Button (Feature 5) */}
+        <button
+          onClick={handleCheckReadiness}
+          disabled={evaluatingReadiness || sessionResults.length === 0}
+          className="dc-btn dc-btn-primary mt-4 w-full"
+        >
+          {evaluatingReadiness ? (
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+              <Trophy size={16} />
+          )}
+          Check Role Readiness
+        </button>
+
+        {/* Try again button */}
+        <button
+          onClick={() => {
+            useSessionStore.getState().resetTrivia();
+            setAnswerInput("");
+            setRetryMode(false);
+          }}
+          className="dc-btn dc-btn-secondary mt-2 w-full"
+        >
+          <RefreshCw className="inline" size={16} /> New Session
+        </button>
+      </motion.div>
+    );
+  }
+
+  // ─── Active Question ───
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      {/* Seed Session Banner (Feature 1) */}
+      {isSeedSession && seedConcept && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="mx-4 mt-4 p-4 rounded-xl border border-orange-500/20 bg-orange-500/5"
+        >
+          <div className="flex items-center gap-2 text-orange-400 font-black text-[11px] uppercase tracking-widest mb-1.5">
+            <Sparkles size={14} className="animate-pulse" /> Seed Session Active
+          </div>
+          <p className="text-[13px] text-zinc-300 leading-relaxed">
+            This workspace was generated to teach: <span className="text-white font-bold">{seedConcept}</span>. 
+            It contains at least one intentional edge case.
+          </p>
+        </motion.div>
+      )}
+
+      {/* Passive CodeWatch Alert (Feature 4) */}
+      <AnimatePresence>
+        {currentAlert && (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className={`mx-4 mt-4 p-4 rounded-xl border relative shadow-lg ${
+              currentAlert.severity === "warning" 
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-200" 
+                : "bg-zinc-800/50 border-zinc-700 text-zinc-300"
+            }`}
+          >
+            <button 
+                onClick={() => setCodeWatchAlert(null)}
+                className="absolute top-2 right-2 p-1 hover:bg-white/10 rounded transition-colors"
+            >
+                <X size={14} />
+            </button>
+            <div className="flex items-center gap-2 font-black text-[10px] uppercase tracking-widest mb-2">
+              <Info size={14} className={currentAlert.severity === "warning" ? "text-amber-500" : "text-zinc-400"} /> 
+              DeepCode Watch {currentAlert.severity === "warning" ? "Warning" : "Note"}
+            </div>
+            <h5 className="text-sm font-bold mb-1 text-white pr-6">{currentAlert.title}</h5>
+            <p className="text-[12px] leading-relaxed opacity-90 mb-3">{currentAlert.explanation}</p>
+            <button 
+                onClick={() => {
+                   // Force understand mode for this line
+                   useSessionStore.getState().setMode("understand");
+                   // In a real impl we'd scroll to line
+                   toast("Navigating to diagnostic...", { icon: "🔍" });
+                }}
+                className="w-full py-1.5 bg-white/10 hover:bg-white/20 rounded border border-white/10 text-[10px] font-black uppercase tracking-widest transition-all"
+            >
+                Deep-Dive Investigation
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div
+        className="px-4 py-3 flex items-center gap-3 "
+        style={{
+          background: "var(--dc-bg-tertiary)",
+          borderBottom: "1px solid var(--dc-border)",
+        }}
+      >
+        <div className="flex gap-1.5 flex-1">
+          {questions.map((_, idx) => (
+            <div
+              key={idx}
+              className="h-1.5 flex-1 rounded-full transition-all duration-300"
+              style={{
+                background:
+                  idx < currentQuestionIndex
+                    ? evaluations[idx]?.correct
+                      ? "var(--dc-success)"
+                      : evaluations[idx]?.partial
+                      ? "var(--dc-warning)"
+                      : "var(--dc-error)"
+                    : idx === currentQuestionIndex
+                    ? "var(--dc-accent-blue)"
+                    : "var(--dc-border)",
+              }}
+            />
+          ))}
+        </div>
+        <span
+          className="text-xs font-medium"
+          style={{ color: "var(--dc-text-muted)" }}
+        >
+          {currentQuestionIndex + 1}/{questions.length}
+        </span>
+      </div>
+
+      <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+        {currentQuestion && (
+          <motion.div
+            key={currentQuestionIndex}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* Difficulty & Concept Tag */}
+            <div className="flex items-center gap-3 mb-5">
+              <span
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{
+                  background:
+                    currentQuestion.difficulty === "surface"
+                      ? "var(--dc-success-muted)"
+                      : currentQuestion.difficulty === "conceptual"
+                      ? "var(--dc-warning-muted)"
+                      : "var(--dc-error-muted)",
+                  color:
+                    currentQuestion.difficulty === "surface"
+                      ? "var(--dc-success)"
+                      : currentQuestion.difficulty === "conceptual"
+                      ? "var(--dc-warning)"
+                      : "var(--dc-error)",
+                  border: `1px solid ${
+                    currentQuestion.difficulty === "surface"
+                      ? "rgba(63, 185, 80, 0.3)"
+                      : currentQuestion.difficulty === "conceptual"
+                      ? "rgba(210, 153, 34, 0.3)"
+                      : "rgba(248, 81, 73, 0.3)"
+                  }`,
+                }}
+              >
+                {currentQuestion.difficulty}
+              </span>
+              <span className="concept-chip">
+                {currentQuestion.concept_tag.replace(/_/g, " ")}
+              </span>
+            </div>
+
+            {/* Question */}
+            <p
+              className="text-[15px] font-medium leading-[1.7] mb-6"
+              style={{ color: "var(--dc-text-primary)" }}
+            >
+              {currentQuestion.question}
+            </p>
+
+            {/* Confidence Rating (before answering) */}
+            {!currentEvaluation && !retryMode && (
+              <div className="mb-6">
+                <label
+                  className="text-xs font-medium mb-2 block"
+                  style={{ color: "var(--dc-text-muted)" }}
+                >
+                  How confident are you? (1–5)
+                </label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <button
+                      key={level}
+                      onClick={() =>
+                        setConfidenceRating(currentQuestionIndex, level)
+                      }
+                      className="w-8 h-8 rounded-lg text-xs font-bold transition-all duration-150"
+                      style={{
+                        background:
+                          currentConfidence === level
+                            ? "var(--dc-accent-blue)"
+                            : "var(--dc-bg-tertiary)",
+                        color:
+                          currentConfidence === level
+                            ? "#fff"
+                            : "var(--dc-text-muted)",
+                        border: `1px solid ${
+                          currentConfidence === level
+                            ? "var(--dc-accent-blue)"
+                            : "var(--dc-border)"
+                        }`,
+                      }}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Answer Input */}
+            {(!currentEvaluation || retryMode) && (
+              <div className="space-y-2">
+                <textarea
+                  id="answer-input"
+                  value={answerInput}
+                  onChange={(e) => setAnswerInput(e.target.value)}
+                  placeholder={
+                    retryMode
+                      ? "Try again from scratch — no hints this time..."
+                      : "Type your answer here (minimum 10 characters)..."
+                  }
+                  rows={4}
+                  className="w-full p-3 rounded-lg text-sm resize-none outline-none transition-all duration-200"
+                  style={{
+                    background: "var(--dc-bg-tertiary)",
+                    border: "1px solid var(--dc-border)",
+                    color: "var(--dc-text-primary)",
+                    fontFamily: "inherit",
+                  }}
+                  onFocus={(e) =>
+                    (e.target.style.borderColor = "var(--dc-accent-blue)")
+                  }
+                  onBlur={(e) =>
+                    (e.target.style.borderColor = "var(--dc-border)")
+                  }
+                />
+                <div className="flex items-center justify-between pt-2">
+                  <span
+                    className="text-xs"
+                    style={{
+                      color:
+                        answerInput.length >= 10
+                          ? "var(--dc-text-muted)"
+                          : "var(--dc-error)",
+                    }}
+                  >
+                    {answerInput.length}/10 min characters
+                  </span>
+                  <button
+                    id="submit-answer-btn"
+                    onClick={handleSubmitAnswer}
+                    disabled={answerInput.length < 10 || evaluating}
+                    className="dc-btn dc-btn-primary text-sm px-5 py-2"
+                  >
+                    {evaluating ? (
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Evaluating...
+                      </span>
+                    ) : retryMode ? (
+                      <span className="flex items-center gap-2"><RefreshCw className="inline" size={16} /> Submit Retry</span>
+                    ) : (
+                      "Submit Answer"
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Evaluation Feedback */}
+            <AnimatePresence>
+              {currentEvaluation && !retryMode && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="rounded-2xl p-5 mt-4"
+                  style={{
+                    background: currentEvaluation.correct
+                      ? "var(--dc-success-muted)"
+                      : currentEvaluation.partial
+                      ? "var(--dc-warning-muted)"
+                      : "var(--dc-error-muted)",
+                    border: `1px solid ${
+                      currentEvaluation.correct
+                        ? "rgba(63, 185, 80, 0.3)"
+                        : currentEvaluation.partial
+                        ? "rgba(210, 153, 34, 0.3)"
+                        : "rgba(248, 81, 73, 0.3)"
+                    }`,
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg flex items-center">
+                      {currentEvaluation.correct
+                        ? <CheckCircle2 className="inline text-dc-success" size={16} />
+                        : currentEvaluation.partial
+                        ? <HelpCircle className="inline" size={16} />
+                        : <XCircle className="inline text-dc-error" size={16} />}
+                    </span>
+                    <span
+                      className="text-sm font-semibold"
+                      style={{
+                        color: currentEvaluation.correct
+                          ? "var(--dc-success)"
+                          : currentEvaluation.partial
+                          ? "var(--dc-warning)"
+                          : "var(--dc-error)",
+                      }}
+                    >
+                      {currentEvaluation.correct
+                        ? `Correct! +${currentEvaluation.score_awarded} pts`
+                        : currentEvaluation.partial
+                        ? `Partial — +${currentEvaluation.score_awarded} pts`
+                        : "Incorrect — hints available"}
+                    </span>
+                  </div>
+                  <p
+                    className="text-sm leading-relaxed"
+                    style={{ color: "var(--dc-text-primary)" }}
+                  >
+                    {currentEvaluation.feedback}
+                  </p>
+                  {currentEvaluation.concept_gap && (
+                    <p
+                      className="text-xs mt-2"
+                      style={{ color: "var(--dc-text-secondary)" }}
+                    >
+                      <strong>Gap:</strong> {currentEvaluation.concept_gap}
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Retry result */}
+            {currentRetry !== undefined && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="rounded-2xl p-4 mt-3"
+                style={{
+                  background: currentRetry
+                    ? "var(--dc-success-muted)"
+                    : "var(--dc-warning-muted)",
+                  border: `1px solid ${
+                    currentRetry
+                      ? "rgba(63, 185, 80, 0.3)"
+                      : "rgba(210, 153, 34, 0.3)"
+                  }`,
+                }}
+              >
+                <span
+                  className="text-sm font-semibold"
+                  style={{
+                    color: currentRetry
+                      ? "var(--dc-success)"
+                      : "var(--dc-warning)",
+                  }}
+                >
+                  {currentRetry
+                    ? <span className="flex items-center gap-2"><CheckCircle2 className="inline text-dc-success" size={16} /> Understanding Confirmed! +2 pts</span>
+                    : "Keep practising — you'll get there"}
+                </span>
+              </motion.div>
+            )}
+
+            {/* Hints */}
+            <AnimatePresence>
+              {currentHints?.hints.map((hint, idx) => (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className={`hint-card hint-${hint.hint_level} mt-3`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{
+                        background:
+                          hint.hint_level === 1
+                            ? "var(--dc-info-muted)"
+                            : hint.hint_level === 2
+                            ? "var(--dc-shadow-glow-purple)"
+                            : "rgba(63, 185, 162, 0.15)",
+                        color:
+                          hint.hint_level === 1
+                            ? "var(--dc-info)"
+                            : hint.hint_level === 2
+                            ? "var(--dc-accent-purple)"
+                            : "var(--dc-accent-teal)",
+                      }}
+                    >
+                      {hint.hint_level === 1
+                        ? <span className="flex items-center gap-2"><Lightbulb className="inline" size={16} /> Nudge</span>
+                        : hint.hint_level === 2
+                        ? "🌍 Analogy"
+                        : <span className="flex items-center gap-2"><BookOpen className="inline" size={16} /> Full Explanation</span>}
+                    </span>
+                  </div>
+                  <p
+                    className="text-sm leading-relaxed"
+                    style={{ color: "var(--dc-text-primary)" }}
+                  >
+                    {hint.hint_text}
+                  </p>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {/* Hint / Retry / Next buttons */}
+            <div className="flex items-center gap-2 mt-4">
+              {canShowHint && (
+                <button
+                  id="show-hint-btn"
+                  onClick={handleRequestHint}
+                  disabled={hintLoading}
+                  className="dc-btn dc-btn-secondary text-sm"
+                >
+                  {hintLoading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Loading...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2"><Lightbulb className="inline" size={16} /> Hint {(currentHints?.currentLevel ?? 0) + 1}</span>
+                  )}
+                </button>
+              )}
+
+              {showRetryButton && (
+                <button
+                  id="retry-btn"
+                  onClick={handleRetry}
+                  className="dc-btn dc-btn-secondary text-sm"
+                >
+                  <RefreshCw className="inline" size={16} /> Try Again
+                </button>
+              )}
+
+              {(currentEvaluation?.correct ||
+                currentRetry !== undefined ||
+                (currentHints?.currentLevel === 3 && !showRetryButton)) && (
+                <button
+                  id="next-question-btn"
+                  onClick={handleNext}
+                  className="dc-btn dc-btn-primary text-sm ml-auto"
+                >
+                  {currentQuestionIndex < questions.length - 1
+                    ? "Next Question →"
+                    : "Finish Session →"}
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+}
