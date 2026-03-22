@@ -163,6 +163,27 @@ export default function Header() {
         style={{ backgroundColor: "var(--dc-bg-tertiary)" }}
       >
         
+        <div className="flex items-center gap-3 shrink-0 min-w-0">
+          <span className="text-[11px] font-bold uppercase tracking-wider hidden md:inline" style={{ color: "var(--dc-text-muted)" }}>Processing Context:</span>
+          
+          <div className="relative flex items-center bg-[var(--dc-bg-elevated)] border rounded-md shadow-inner transition-colors hover:border-[var(--dc-accent-blue)]" style={{ borderColor: "var(--dc-border)" }}>
+            <select
+              value={language}
+              onChange={handleLanguageChange}
+              className="appearance-none bg-transparent text-[11px] font-bold uppercase tracking-wider text-[var(--dc-text-primary)] w-[140px] px-2 rounded-md py-2 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--dc-accent-blue)]"
+            >
+              {LANGUAGES.map((lang) => (
+                <option key={lang.value} value={lang.value} className="bg-[var(--dc-bg-elevated)] text-[var(--dc-text-primary)]">
+                  {lang.icon} — {lang.label}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-[var(--dc-text-muted)]">
+              <ChevronDown size={14} />
+            </div>
+          </div>
+        </div>
+
         {/* Massive Workspace Tabs */}
         <div className="flex h-full items-end gap-2 pt-2">
           <button
@@ -190,27 +211,6 @@ export default function Header() {
           >
             <Lightbulb size={16} /> DEEP UNDERSTAND
           </button>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0 min-w-0">
-          <span className="text-[11px] font-bold uppercase tracking-wider hidden md:inline" style={{ color: "var(--dc-text-muted)" }}>Processing Context:</span>
-          
-          <div className="relative flex items-center bg-[var(--dc-bg-elevated)] border rounded-md shadow-inner transition-colors hover:border-[var(--dc-accent-blue)]" style={{ borderColor: "var(--dc-border)" }}>
-            <select
-              value={language}
-              onChange={handleLanguageChange}
-              className="appearance-none bg-transparent text-[11px] font-bold uppercase tracking-wider text-[var(--dc-text-primary)] w-[140px] px-2 rounded-md py-2 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--dc-accent-blue)]"
-            >
-              {LANGUAGES.map((lang) => (
-                <option key={lang.value} value={lang.value} className="bg-[var(--dc-bg-elevated)] text-[var(--dc-text-primary)]">
-                  {lang.icon} — {lang.label}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-[var(--dc-text-muted)]">
-              <ChevronDown size={14} />
-            </div>
-          </div>
         </div>
       </div>
     </header>
