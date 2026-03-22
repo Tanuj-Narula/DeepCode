@@ -6,7 +6,7 @@ import type { SupportedLanguage } from "@/types/schemas";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { Beaker, Lightbulb, Sparkles, ChevronDown, History } from "lucide-react";
+import { Swords, Lightbulb, Sparkles, ChevronDown, History } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import HistoryPanel from "./HistoryPanel";
 import { useHistoryStore } from "@/stores/historyStore";
@@ -245,7 +245,7 @@ export default function Header() {
               borderColor: mode === "trivia" ? "var(--dc-accent-blue)" : "transparent"
             }}
           >
-            <Beaker size={16} /> TRIVIA GAUNTLET
+            <Swords size={16} /> TRIVIA GAUNTLET
           </button>
           
           <button

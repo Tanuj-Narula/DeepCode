@@ -7,7 +7,7 @@ import { useEditorStore } from "@/stores/editorStore";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import type { Evaluation, HintProgress } from "@/types/schemas";
-import { RefreshCw, Target, BookOpen, HelpCircle, Lightbulb, XCircle, Beaker, CheckCircle2, Sparkles, Info, X } from "lucide-react";
+import { RefreshCw, Target, BookOpen, HelpCircle, Lightbulb, XCircle, Swords, CheckCircle2, Sparkles, Info, X } from "lucide-react";
 
 
 export default function TriviaPanel() {
@@ -210,6 +210,43 @@ export default function TriviaPanel() {
     handleRequestHint,
   ]);
 
+  // Skip question
+  const handleSkipQuestion = useCallback(async () => {
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ) return;
+
+    setEvaluating(true);
+    try {
+      setWrongAttempt(currentQuestionIndex, 3);
+      setUserAnswer(currentQuestionIndex, "Skipped");
+      const skipEval: Evaluation = {
+        correct: false,
+        partial: false,
+        score_awarded: 0,
+        feedback: "Question skipped. Here is the full explanation so you can learn from it.",
+        concept_gap: currentQ.concept_tag,
+      };
+      setEvaluation(currentQuestionIndex, skipEval);
+      updateScore(0);
+      
+      await handleRequestHint(3);
+      toast("Question skipped (0 pts)", { icon: <XCircle size={16} /> });
+      setAnswerInput("");
+    } catch {
+      toast.error("Failed to skip question");
+    } finally {
+      setEvaluating(false);
+    }
+  }, [
+    questions,
+    currentQuestionIndex,
+    setWrongAttempt,
+    setUserAnswer,
+    setEvaluation,
+    updateScore,
+    handleRequestHint,
+  ]);
+
   // Move to next question or finish
   const handleNext = useCallback(() => {
     if (currentQuestionIndex < questions.length - 1) {
@@ -277,7 +314,7 @@ export default function TriviaPanel() {
               boxShadow: "var(--dc-shadow-glow-blue)",
             }}
           >
-            <Beaker className="inline" size={18} />
+            <Swords className="inline" size={18} />
           </div>
           <h2
             className="text-xl font-bold mb-2"
@@ -674,21 +711,34 @@ export default function TriviaPanel() {
                   >
                     {answerInput.length}/10 min characters
                   </span>
-                  <button
-                    id="submit-answer-btn"
-                    onClick={handleSubmitAnswer}
-                    disabled={answerInput.length < 10 || evaluating}
-                    className="dc-btn dc-btn-primary text-sm px-5 py-2"
-                  >
-                    {evaluating ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Evaluating...
-                      </span>
-                    ) : (
-                      "Submit Answer"
-                    )}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSkipQuestion}
+                      disabled={evaluating}
+                      className="text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                      style={{ color: "var(--dc-text-muted)" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--dc-text-primary)", e.currentTarget.style.backgroundColor = "var(--dc-bg-elevated)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--dc-text-muted)", e.currentTarget.style.backgroundColor = "transparent")}
+                    >
+                      Skip
+                    </button>
+                    <button
+                      id="submit-answer-btn"
+                      onClick={handleSubmitAnswer}
+                      disabled={answerInput.length < 10 || evaluating}
+                      className="dc-btn dc-btn-primary text-sm px-5 py-2"
+                    >
+                      {evaluating ? (
+                        <span className="flex items-center gap-2">
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Evaluating...
+                        </span>
+                      ) : (
+                        "Submit Answer"
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
