@@ -17,7 +17,6 @@ export default function TriviaPanel() {
     userAnswers,
     evaluations,
     hintProgress,
-    confidenceRatings,
     retryResults,
     isSeedSession,
     seedConcept,
@@ -30,7 +29,6 @@ export default function TriviaPanel() {
     setUserAnswer,
     setEvaluation,
     addHint,
-    setConfidenceRating,
     setRetryResult,
     setTriviaComplete,
     setTriviaLoading,
@@ -298,7 +296,6 @@ export default function TriviaPanel() {
   const currentQuestion = questions[currentQuestionIndex];
   const currentEvaluation = evaluations[currentQuestionIndex];
   const currentHints = hintProgress[currentQuestionIndex];
-  const currentConfidence = confidenceRatings[currentQuestionIndex];
   
   const questionFinished = currentEvaluation?.correct || (wrongAttempts[currentQuestionIndex] ?? 0) >= 3;
 
@@ -734,45 +731,7 @@ export default function TriviaPanel() {
               {currentQuestion.question}
             </p>
 
-            {/* Confidence Rating (before answering) */}
-            {!currentEvaluation && (wrongAttempts[currentQuestionIndex] ?? 0) === 0 && (
-              <div className="mb-6">
-                <label
-                  className="text-xs font-medium mb-2 block"
-                  style={{ color: "var(--dc-text-muted)" }}
-                >
-                  How confident are you? (1–5)
-                </label>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <button
-                      key={level}
-                      onClick={() =>
-                        setConfidenceRating(currentQuestionIndex, level)
-                      }
-                      className="w-8 h-8 rounded-lg text-xs font-bold transition-all duration-150"
-                      style={{
-                        background:
-                          currentConfidence === level
-                            ? "var(--dc-accent-blue)"
-                            : "var(--dc-bg-tertiary)",
-                        color:
-                          currentConfidence === level
-                            ? "#fff"
-                            : "var(--dc-text-muted)",
-                        border: `1px solid ${
-                          currentConfidence === level
-                            ? "var(--dc-accent-blue)"
-                            : "var(--dc-border)"
-                        }`,
-                      }}
-                    >
-                      {level}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+
 
             {/* Answer Input */}
             {!questionFinished && (

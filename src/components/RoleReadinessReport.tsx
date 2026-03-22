@@ -14,28 +14,9 @@ import {
 } from "lucide-react";
 
 export default function RoleReadinessReport() {
-  const { roleReadiness, setRoleReadiness, setRoadmap } = useSessionStore();
+  const { roleReadiness, setRoleReadiness } = useSessionStore();
 
   if (!roleReadiness) return null;
-
-  const handleStartRoadmap = async () => {
-    // Convert current readiness gaps into a new roadmap
-    const scores = roleReadiness.conceptBreakdown.reduce((acc, curr) => {
-        acc[curr.concept] = curr.score;
-        return acc;
-    }, {} as Record<string, number>);
-
-    const res = await fetch("/api/generate-roadmap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scores }),
-    });
-    if (res.ok) {
-        const roadmap = await res.json();
-        setRoadmap(roadmap);
-        setRoleReadiness(null); // Close report and focus on roadmap
-    }
-  };
 
   return (
     <motion.div 
@@ -135,13 +116,7 @@ export default function RoleReadinessReport() {
         </div>
 
         {/* Footer */}
-        <div className="p-8 border-t border-zinc-800 bg-[#18181b]/30 flex gap-4">
-            <button 
-                onClick={handleStartRoadmap}
-                className="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/20 active:scale-[0.98]"
-            >
-                <Sparkles size={18} /> Generate Roadmap from Gaps
-            </button>
+        <div className="p-8 border-t border-zinc-800 bg-[#18181b]/30 flex justify-end gap-4">
             <button 
                 onClick={() => setRoleReadiness(null)}
                 className="px-6 py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-bold uppercase tracking-widest transition-all"

@@ -76,7 +76,7 @@ export default function ResizableLayout({
         className={`flex-1 h-full min-w-0 flex flex-col border-l relative ${isResizingH || isResizingV ? "pointer-events-none select-none" : ""}`}
         style={{ backgroundColor: "var(--dc-bg-secondary)", borderColor: "var(--dc-border)" }}
       >
-        <div style={{ height: `${rightPanelHeight}%`, position: 'relative' }} className="flex flex-col overflow-hidden">
+        <div style={{ height: bottomPanel ? `${rightPanelHeight}%` : '100%', position: 'relative' }} className="flex flex-col overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-[var(--dc-bg-primary)] opacity-20 pointer-events-none z-10" />
             {rightPanel}
         </div>

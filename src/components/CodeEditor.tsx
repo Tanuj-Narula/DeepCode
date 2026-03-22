@@ -150,14 +150,26 @@ export default function CodeEditor() {
 
   // Apply heatmap decorations when heatmap data changes
   useEffect(() => {
-    if (editorRef.current && isEditorReady && Object.keys(heatmapData).length > 0) {
-      heatmapDecorationsRef.current = applyHeatmapDecorations(
-        editorRef.current,
-        heatmapData,
-        heatmapDecorationsRef.current
-      );
+    if (editorRef.current && isEditorReady) {
+      if (Object.keys(heatmapData).length > 0) {
+        heatmapDecorationsRef.current = applyHeatmapDecorations(
+          editorRef.current,
+          heatmapData,
+          heatmapDecorationsRef.current
+        );
+      } else {
+        heatmapDecorationsRef.current = clearDecorations(
+          editorRef.current,
+          heatmapDecorationsRef.current
+        );
+      }
     }
   }, [heatmapData, isEditorReady]);
+
+  // Clear heatmap on reset, language change, or mode shift
+  useEffect(() => {
+    useSessionStore.getState().setHeatmapData({});
+  }, [mode, language, code]);
 
   // Apply active line decoration in Understand mode
   useEffect(() => {
@@ -204,7 +216,7 @@ export default function CodeEditor() {
       <div className="relative w-full h-full rounded-xl flex flex-col overflow-hidden border shadow-sm transition-all" style={{ borderColor: "var(--dc-border)", backgroundColor: "var(--dc-bg-primary)" }}>
         {/* Editor status bar */}
         <div
-          className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-1.5"
+          className="flex items-center justify-between px-4 py-1.5"
           style={{
             background: "var(--dc-bg-tertiary)",
             borderBottom: "1px solid var(--dc-border)",
@@ -231,7 +243,7 @@ export default function CodeEditor() {
           </span>
         </div>
 
-        <div className="flex-1 pt-6 relative">
+        <div className="flex-1 relative w-full h-full min-h-0">
           <Editor
             height="100%"
             language={monacoLanguageMap[language] || "javascript"}

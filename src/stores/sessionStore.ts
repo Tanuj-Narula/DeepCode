@@ -9,7 +9,6 @@ import type {
   HeatmapStatus,
   SessionResult,
   GlobalHistoryResult,
-  RoadmapData,
 } from "@/types/schemas";
 import { RoleReadiness } from "@/data/roleReadiness";
 
@@ -65,13 +64,6 @@ interface SessionState {
   setTriviaLoading: (loading: boolean) => void;
   setWrongAttempt: (questionIndex: number, count: number) => void;
 
-  // Roadmap State (Feature 2)
-  roadmap: RoadmapData | null;
-  roadmapProgress: Record<string, "not_started" | "attempted" | "mastered">;
-  setRoadmap: (roadmap: RoadmapData | null) => void;
-  setRoadmapProgress: (concept: string, status: "not_started" | "attempted" | "mastered") => void;
-  loadRoadmap: () => void; // Mock local logic
-
 
   // Role Readiness (Feature 5)
   roleReadiness: RoleReadiness | null;
@@ -119,8 +111,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   sessionStartTime: null,
   seedConcept: null,
   isSeedSession: false,
-  roadmap: null,
-  roadmapProgress: {},
   roleReadiness: null,
 
   setMode: (mode) => set({ mode }),
@@ -176,14 +166,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   setUnderstandLoading: (loading) => set({ understandLoading: loading }),
 
   setSeedSession: (concept, isSeed) => set({ seedConcept: concept, isSeedSession: isSeed }),
-
-  setRoadmap: (roadmap) => set({ roadmap }),
-  setRoadmapProgress: (concept, status) => set((state) => ({
-    roadmapProgress: { ...state.roadmapProgress, [concept]: status }
-  })),
-  loadRoadmap: () => {
-      // Logic for initial load if necessary
-  },
 
   setRoleReadiness: (readiness) => set({ roleReadiness: readiness }),
 

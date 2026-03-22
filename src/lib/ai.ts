@@ -1,26 +1,23 @@
 /**
  * AI Provider Routing Layer
  *
- * Unified interface for AI calls via OpenRouter.
- * Maps tasks to specific models per the tech stack document.
+ * Primary: Groq (free tier — llama-3.3-70b-versatile, llama-3.1-8b-instant)
+ * Fallback: Google Gemini Flash (free tier — gemini-2.0-flash)
  */
 
-// Model assignments by task
+// Model assignments by task — all on Groq free tier
 export const AI_MODELS = {
-  questionGeneration: "groq/llama-3.3-70b-versatile",
-  answerEvaluation: "anthropic/claude-haiku-4-5",
-  lineExplanation: "anthropic/claude-haiku-4-5",
-  hint1: "groq/llama-3.3-70b-versatile",
-  hint2: "groq/llama-3.3-70b-versatile",
-  hint3: "anthropic/claude-haiku-4-5",
-  walkthrough: "anthropic/claude-haiku-4-5",
-  whatIf: "groq/llama-3.3-70b-versatile",
-  rubberDuck: "anthropic/claude-sonnet-4-6",
-  conceptGraph: "anthropic/claude-haiku-4-5",
+  questionGeneration: "llama-3.3-70b-versatile",
+  answerEvaluation: "llama-3.3-70b-versatile",
+  lineExplanation: "llama-3.3-70b-versatile",
+  hint1: "llama-3.1-8b-instant",
+  hint2: "llama-3.1-8b-instant",
+  hint3: "llama-3.3-70b-versatile",
+  walkthrough: "llama-3.3-70b-versatile",
+  whatIf: "llama-3.1-8b-instant",
+  rubberDuck: "llama-3.3-70b-versatile",
+  conceptGraph: "llama-3.3-70b-versatile",
 } as const;
-
-// Fallback model when primary hits rate limits
-export const FALLBACK_MODEL = "google/gemini-flash-2.0";
 
 export type AITask = keyof typeof AI_MODELS;
 
@@ -35,7 +32,7 @@ interface AICallOptions {
 }
 
 /**
- * Makes an AI call via OpenRouter with automatic fallback.
+ * Makes an AI call via Groq with automatic Gemini fallback.
  * This runs server-side only (in API routes).
  */
 export async function callAI({
@@ -44,83 +41,107 @@ export async function callAI({
   temperature = 0.7,
   maxTokens = 2000,
 }: AICallOptions): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENROUTER_API_KEY is not configured");
+  const groqApiKey = process.env.GROQ_API_KEY?.trim();
+  if (!groqApiKey) {
+    throw new Error("GROQ_API_KEY is not configured");
   }
 
-  const primaryModel = AI_MODELS[task];
+  const model = AI_MODELS[task];
 
-  // Try primary model first
   try {
-    const response = await makeRequest(apiKey, primaryModel, messages, temperature, maxTokens);
-    return response;
+    return await callGroq(groqApiKey, model, messages, temperature, maxTokens);
   } catch (error) {
-    // On rate limit (429), fall back to Gemini Flash
     if (error instanceof AIRateLimitError) {
-      console.warn(`Rate limited on ${primaryModel}, falling back to ${FALLBACK_MODEL}`);
-      const response = await makeRequest(apiKey, FALLBACK_MODEL, messages, temperature, maxTokens);
-      return response;
+      console.warn(`Groq rate-limited on ${model}, falling back to Gemini Flash`);
+      const geminiKey = process.env.GEMINI_API_KEY?.trim();
+      if (!geminiKey) throw new AIError("GEMINI_API_KEY not configured for fallback");
+      return await callGemini(geminiKey, messages, temperature, maxTokens);
     }
     throw error;
   }
 }
 
-async function makeRequest(
+async function callGroq(
   apiKey: string,
   model: string,
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   temperature: number,
   maxTokens: number
 ): Promise<string> {
-  // Feature: Direct Groq Support
-  const groqApiKey = process.env.GROQ_API_KEY;
-  const isDirectGroq = model.startsWith("groq/") && groqApiKey;
-  
-  const url = isDirectGroq 
-    ? "https://api.groq.com/openai/v1/chat/completions" 
-    : "https://openrouter.ai/api/v1/chat/completions";
-
-  const authKey = isDirectGroq ? groqApiKey : apiKey;
-  const targetModel = isDirectGroq ? model.replace("groq/", "") : model;
-
-  const response = await fetch(url, {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${authKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      ...(isDirectGroq ? {} : {
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://deepcode.ai",
-        "X-Title": "DeepCode AI",
-      }),
     },
     body: JSON.stringify({
-      model: targetModel,
+      model,
       messages,
       temperature,
       max_tokens: maxTokens,
-      ...(isDirectGroq ? {} : { response_format: { type: "json_object" } }),
     }),
   });
 
   if (response.status === 429) {
-    throw new AIRateLimitError(`Rate limited on model: ${model}`);
+    throw new AIRateLimitError(`Groq rate limit hit on model: ${model}`);
   }
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "Unknown error");
-    throw new AIError(`AI request failed (${response.status}): ${errorBody}`);
+    throw new AIError(`Groq request failed (${response.status}): ${errorBody}`);
   }
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new AIError("AI returned empty response");
-  }
-
+  if (!content) throw new AIError("Groq returned empty response");
   return content;
 }
+
+async function callGemini(
+  apiKey: string,
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  temperature: number,
+  maxTokens: number
+): Promise<string> {
+  // Convert OpenAI-style messages to Gemini format
+  const systemMsg = messages.find(m => m.role === "system")?.content ?? "";
+  const conversationMsgs = messages.filter(m => m.role !== "system");
+
+  const contents = conversationMsgs.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: systemMsg ? { parts: [{ text: systemMsg }] } : undefined,
+      contents,
+      generationConfig: {
+        temperature,
+        maxOutputTokens: maxTokens,
+      },
+    }),
+  });
+
+  if (response.status === 429) {
+    throw new AIRateLimitError("Gemini rate limit hit");
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "Unknown error");
+    throw new AIError(`Gemini request failed (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!content) throw new AIError("Gemini returned empty response");
+  return content;
+}
+
 
 export async function parseAIResponse<T>(
   rawResponse: string,

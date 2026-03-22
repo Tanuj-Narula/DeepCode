@@ -135,23 +135,7 @@ export interface HintProgress {
   currentLevel: 0 | 1 | 2 | 3;
   hints: Hint[];
 }
-// ─── Roadmap Schema (Feature 2) ───
-export const RoadmapSchema = z.object({
-  weeks: z.array(z.object({
-    weekNumber: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
-    theme: z.string(),
-    milestones: z.array(z.object({
-      concept: z.string(),
-      reason: z.string(),
-      suggestedCodePattern: z.string(),
-    }))
-  }))
-});
 
-export type RoadmapData = z.infer<typeof RoadmapSchema>;
-
-// ─── Progress Types ───
-export type RoadmapStatus = "not_started" | "attempted" | "mastered";
 // ─── Mutation Prediction Schema (Feature 3) ───
 export const MutationPredictionSchema = z.object({
   explanation: z.string(),

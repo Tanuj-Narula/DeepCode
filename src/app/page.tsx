@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import Header from "@/components/Header";
 import TriviaPanel from "@/components/TriviaPanel";
 import UnderstandPanel from "@/components/UnderstandPanel";
-import RoadmapPanel from "@/components/RoadmapPanel";
 import RoleReadinessReport from "@/components/RoleReadinessReport";
 import { useSessionStore } from "@/stores/sessionStore";
 
@@ -29,7 +28,6 @@ export default function HomePage() {
       <ResizableLayout 
         leftPanel={<CodeEditor />}
         rightPanel={mode === "trivia" ? <TriviaPanel /> : <UnderstandPanel />}
-        bottomPanel={<RoadmapPanel />}
       />
       <RoleReadinessReport />
     </div>
