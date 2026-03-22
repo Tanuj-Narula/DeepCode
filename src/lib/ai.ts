@@ -122,10 +122,6 @@ async function makeRequest(
   return content;
 }
 
-/**
- * Parses AI response JSON safely. If parsing fails, retries once
- * with a correction prompt.
- */
 export async function parseAIResponse<T>(
   rawResponse: string,
   parseSchema: (data: unknown) => T,
@@ -134,37 +130,64 @@ export async function parseAIResponse<T>(
   // Try to extract JSON from the response (AI sometimes wraps in markdown)
   let jsonString = rawResponse.trim();
 
-  // Remove markdown code blocks if present
-  if (jsonString.startsWith("```")) {
-    const lines = jsonString.split("\n");
-    jsonString = lines
-      .slice(1, lines.length - 1)
-      .join("\n")
-      .trim();
+  // Extract JSON block using regex if present
+  const jsonMatch = jsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (jsonMatch && jsonMatch[1]) {
+    jsonString = jsonMatch[1].trim();
+  } else {
+    // Attempt to extract the first { ... } or [ ... ]
+    const firstBrace = jsonString.indexOf("{");
+    const lastBrace = jsonString.lastIndexOf("}");
+    const firstBracket = jsonString.indexOf("[");
+    const lastBracket = jsonString.lastIndexOf("]");
+
+    if (
+      firstBrace !== -1 &&
+      lastBrace !== -1 &&
+      (firstBracket === -1 || firstBrace < firstBracket)
+    ) {
+      jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+    } else if (firstBracket !== -1 && lastBracket !== -1) {
+      jsonString = jsonString.substring(firstBracket, lastBracket + 1);
+    }
   }
 
   try {
     const parsed = JSON.parse(jsonString);
     return parseSchema(parsed);
-  } catch (firstError) {
+  } catch (firstError: any) {
     console.warn("First parse attempt failed:", firstError);
+
+    const errorDetails = firstError?.message || String(firstError);
 
     // If we have a retry function, try once more
     if (retryFn) {
       try {
         const retryResponse = await retryFn();
-        const retryParsed = JSON.parse(retryResponse.trim());
+        let retryJsonString = retryResponse.trim();
+        const retryMatch = retryJsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (retryMatch && retryMatch[1]) {
+          retryJsonString = retryMatch[1].trim();
+        } else {
+          const fb = retryJsonString.indexOf("{");
+          const lb = retryJsonString.lastIndexOf("}");
+          if (fb !== -1 && lb !== -1) {
+            retryJsonString = retryJsonString.substring(fb, lb + 1);
+          }
+        }
+        
+        const retryParsed = JSON.parse(retryJsonString);
         return parseSchema(retryParsed);
-      } catch (retryError) {
+      } catch (retryError: any) {
         console.error("Retry parse also failed:", retryError);
         throw new AIError(
-          `Failed to parse AI response after retry. Raw response: ${rawResponse.substring(0, 200)}`
+          `Parse failed after retry. Error: ${errorDetails} / RetryError: ${retryError?.message}. Raw: ${rawResponse.substring(0, 500)}`
         );
       }
     }
 
     throw new AIError(
-      `Failed to parse AI response. Raw: ${rawResponse.substring(0, 200)}`
+      `Failed to parse AI response. Error: ${errorDetails}. Raw: ${rawResponse.substring(0, 500)}`
     );
   }
 }

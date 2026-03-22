@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
 
 Rules:
 - Questions must be SPECIFIC to the provided code — never generic CS questions
+- Each question MUST test a DIFFERENT concept — ensure all three concept_tags are distinct
 - Each question tests a different depth of understanding
 - Return ONLY valid JSON, no other text
 

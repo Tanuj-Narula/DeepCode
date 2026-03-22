@@ -10,7 +10,6 @@ import type {
   SessionResult,
   GlobalHistoryResult,
   RoadmapData,
-  CodeWatchAlert,
 } from "@/types/schemas";
 import { RoleReadiness } from "@/data/roleReadiness";
 
@@ -30,6 +29,7 @@ interface SessionState {
   sessionResults: GlobalHistoryResult[];
   triviaComplete: boolean;
   triviaLoading: boolean;
+  wrongAttempts: Record<number, number>;
 
   // Understand state
   activeLineExplanation: LineExplanation | null;
@@ -63,6 +63,7 @@ interface SessionState {
   addSessionResult: (result: GlobalHistoryResult) => void;
   setTriviaComplete: (complete: boolean) => void;
   setTriviaLoading: (loading: boolean) => void;
+  setWrongAttempt: (questionIndex: number, count: number) => void;
 
   // Roadmap State (Feature 2)
   roadmap: RoadmapData | null;
@@ -71,9 +72,6 @@ interface SessionState {
   setRoadmapProgress: (concept: string, status: "not_started" | "attempted" | "mastered") => void;
   loadRoadmap: () => void; // Mock local logic
 
-  // CodeWatch State (Feature 4)
-  currentAlert: CodeWatchAlert | null;
-  setCodeWatchAlert: (alert: CodeWatchAlert | null) => void;
 
   // Role Readiness (Feature 5)
   roleReadiness: RoleReadiness | null;
@@ -108,6 +106,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   sessionResults: [],
   triviaComplete: false,
   triviaLoading: false,
+  wrongAttempts: {},
 
   activeLineExplanation: null,
   activeWalkthrough: null,
@@ -122,7 +121,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   isSeedSession: false,
   roadmap: null,
   roadmapProgress: {},
-  currentAlert: null,
   roleReadiness: null,
 
   setMode: (mode) => set({ mode }),
@@ -135,6 +133,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       hintProgress: {},
       confidenceRatings: {},
       retryResults: {},
+      wrongAttempts: {},
       triviaComplete: false,
       totalScore: 0,
       sessionStartTime: Date.now(),
@@ -160,6 +159,10 @@ export const useSessionStore = create<SessionState>((set) => ({
     set((state) => ({
       retryResults: { ...state.retryResults, [questionIndex]: correct },
     })),
+  setWrongAttempt: (questionIndex, count) =>
+    set((state) => ({
+      wrongAttempts: { ...state.wrongAttempts, [questionIndex]: count },
+    })),
   addSessionResult: (result) =>
     set((state) => ({
       sessionResults: [...state.sessionResults, result],
@@ -182,7 +185,6 @@ export const useSessionStore = create<SessionState>((set) => ({
       // Logic for initial load if necessary
   },
 
-  setCodeWatchAlert: (alert) => set({ currentAlert: alert }),
   setRoleReadiness: (readiness) => set({ roleReadiness: readiness }),
 
   setHeatmapData: (data) => set({ heatmapData: data }),
@@ -198,6 +200,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       hintProgress: {},
       confidenceRatings: {},
       retryResults: {},
+      wrongAttempts: {},
       triviaComplete: false,
       triviaLoading: false,
       totalScore: 0,
@@ -213,6 +216,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       hintProgress: {},
       confidenceRatings: {},
       retryResults: {},
+      wrongAttempts: {},
       sessionResults: [],
       triviaComplete: false,
       triviaLoading: false,

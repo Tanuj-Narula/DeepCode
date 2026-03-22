@@ -153,32 +153,7 @@ body {
   border-left: 3px solid var(--dc-warning) !important;
 }
 
-/* CodeWatch Passive Scan Decorations (Feature 4) */
-.codewatch-warning {
-  border-bottom: 2px wavy var(--dc-warning) !important;
-  cursor: help;
-  z-index: 10;
-}
 
-.codewatch-info {
-  border-bottom: 2px dashed var(--dc-info) !important;
-  cursor: help;
-  z-index: 10;
-}
-
-.codewatch-warning-glyph {
-  background-color: var(--dc-warning) !important;
-  width: 4px !important;
-  margin-left: 2px !important;
-  border-radius: 2px;
-}
-
-.codewatch-info-glyph {
-  background-color: var(--dc-info) !important;
-  width: 4px !important;
-  margin-left: 2px !important;
-  border-radius: 2px;
-}
 
 /* ─── Custom Utility Classes ─── */
 .glass-panel {

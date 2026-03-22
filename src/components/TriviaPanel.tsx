@@ -23,8 +23,6 @@ export default function TriviaPanel() {
     seedConcept,
     triviaComplete,
     triviaLoading,
-    currentAlert,
-    setCodeWatchAlert,
     setQuestions,
     totalScore,
     maxPossibleScore,
@@ -37,6 +35,8 @@ export default function TriviaPanel() {
     setTriviaComplete,
     setTriviaLoading,
     updateScore,
+    wrongAttempts,
+    setWrongAttempt,
     setHeatmapData,
     addSessionResult,
     setMode,
@@ -47,7 +47,6 @@ export default function TriviaPanel() {
   const [answerInput, setAnswerInput] = useState("");
   const [evaluating, setEvaluating] = useState(false);
   const [hintLoading, setHintLoading] = useState(false);
-  const [retryMode, setRetryMode] = useState(false);
   const [evaluatingReadiness, setEvaluatingReadiness] = useState(false);
   const [completeTimeMs, setCompleteTimeMs] = useState<number | null>(null);
 
@@ -115,81 +114,13 @@ export default function TriviaPanel() {
     }
   }, [scopedFunction, language, setQuestions, setTriviaLoading]);
 
-  // Submit answer
-  const handleSubmitAnswer = useCallback(async () => {
-    const currentQ = questions[currentQuestionIndex];
-    if (!currentQ || !answerInput.trim()) return;
-
-    setEvaluating(true);
-
-    try {
-      const res = await fetch("/api/evaluate-answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: currentQ.question,
-          code: scopedFunction,
-          expectedKeywords: currentQ.expected_keywords,
-          userAnswer: answerInput,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Evaluation failed");
-
-      const evaluation: Evaluation = await res.json();
-
-      if (retryMode) {
-        // Retry scoring
-        const retryCorrect = evaluation.correct;
-        setRetryResult(currentQuestionIndex, retryCorrect);
-        if (retryCorrect) {
-          updateScore(2);
-          toast.success("Understanding Confirmed! +2 pts");
-        } else {
-          toast("Keep practising — review the explanation", { icon: <BookOpen className="inline" size={16} /> });
-        }
-        setRetryMode(false);
-      } else {
-        // First attempt
-        setUserAnswer(currentQuestionIndex, answerInput);
-        setEvaluation(currentQuestionIndex, evaluation);
-        updateScore(evaluation.score_awarded);
-
-        if (evaluation.correct) {
-          toast.success(`Correct! +${evaluation.score_awarded} pts`);
-        } else if (evaluation.partial) {
-          toast("Partial — close but not quite", { icon: <HelpCircle className="inline" size={16} /> });
-        } else {
-          toast("Not quite — try a hint?", { icon: <Lightbulb className="inline" size={16} /> });
-        }
-
-      }
-
-      setAnswerInput("");
-    } catch {
-      toast.error("Evaluation failed — try again");
-    } finally {
-      setEvaluating(false);
-    }
-  }, [
-    questions,
-    currentQuestionIndex,
-    answerInput,
-    scopedFunction,
-    retryMode,
-    setUserAnswer,
-    setEvaluation,
-    updateScore,
-    setRetryResult,
-  ]);
-
   // Request hint
-  const handleRequestHint = useCallback(async () => {
+  const handleRequestHint = useCallback(async (levelOverride?: 1 | 2 | 3) => {
     const currentQ = questions[currentQuestionIndex];
     if (!currentQ) return;
 
     const currentHintProgress = hintProgress[currentQuestionIndex];
-    const nextLevel = ((currentHintProgress?.currentLevel ?? 0) + 1) as 1 | 2 | 3;
+    const nextLevel = (levelOverride || (currentHintProgress?.currentLevel ?? 0) + 1) as 1 | 2 | 3;
 
     if (nextLevel > 3) return;
 
@@ -205,7 +136,7 @@ export default function TriviaPanel() {
         body: JSON.stringify({
           question: currentQ.question,
           code: scopedFunction,
-          userAnswer: userAnswers[currentQuestionIndex] ?? "",
+          userAnswer: userAnswers[currentQuestionIndex] ?? answerInput ?? "",
           hintLevel: nextLevel,
           previousHints: previousHintTexts,
         }),
@@ -232,7 +163,78 @@ export default function TriviaPanel() {
     hintProgress,
     scopedFunction,
     userAnswers,
+    answerInput,
     addHint,
+  ]);
+
+  // Submit answer
+  const handleSubmitAnswer = useCallback(async () => {
+    const currentQ = questions[currentQuestionIndex];
+    if (!currentQ || !answerInput.trim()) return;
+
+    setEvaluating(true);
+
+    try {
+      const res = await fetch("/api/evaluate-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: currentQ.question,
+          code: scopedFunction,
+          expectedKeywords: currentQ.expected_keywords,
+          userAnswer: answerInput,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Evaluation failed");
+
+      const evaluation: Evaluation = await res.json();
+      const attempts = (wrongAttempts[currentQuestionIndex] ?? 0) + 1;
+
+      if (evaluation.correct) {
+        setUserAnswer(currentQuestionIndex, answerInput);
+        setEvaluation(currentQuestionIndex, evaluation);
+        updateScore(10); // Standard 10 for correct
+        toast.success(`Correct! +10 pts`);
+        setAnswerInput("");
+      } else {
+        // Wrong or Partial
+        if (attempts < 3) {
+          setWrongAttempt(currentQuestionIndex, attempts);
+          toast.error(evaluation.partial ? "Partial answer. Hint incoming!" : "Incorrect. Here's a hint!");
+          
+          // Auto-request hint
+          await handleRequestHint(attempts as 1 | 2 | 3);
+          setAnswerInput(""); // Clear for retry
+        } else {
+          // 3rd failed attempt
+          setWrongAttempt(currentQuestionIndex, attempts);
+          setUserAnswer(currentQuestionIndex, answerInput);
+          evaluation.score_awarded = 0; // Force 0 on 3rd failure
+          setEvaluation(currentQuestionIndex, evaluation);
+          updateScore(0);
+          
+          await handleRequestHint(3); // Show final hint/explanation
+          toast("Moved to next question (0 pts)", { icon: <BookOpen size={16} /> });
+          setAnswerInput("");
+        }
+      }
+    } catch {
+      toast.error("Evaluation failed — try again");
+    } finally {
+      setEvaluating(false);
+    }
+  }, [
+    questions,
+    currentQuestionIndex,
+    answerInput,
+    scopedFunction,
+    wrongAttempts,
+    setWrongAttempt,
+    setUserAnswer,
+    setEvaluation,
+    updateScore,
+    handleRequestHint,
   ]);
 
   // Move to next question or finish
@@ -240,7 +242,6 @@ export default function TriviaPanel() {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       setAnswerInput("");
-      setRetryMode(false);
     } else {
       // Session complete — generate heatmap
       const heatmap: Record<number, HeatmapStatus> = {};
@@ -294,21 +295,13 @@ export default function TriviaPanel() {
     totalScore,
   ]);
 
-  // Handle retry after Hint 3
-  const handleRetry = useCallback(() => {
-    setRetryMode(true);
-    setAnswerInput("");
-  }, []);
-
   const currentQuestion = questions[currentQuestionIndex];
   const currentEvaluation = evaluations[currentQuestionIndex];
   const currentHints = hintProgress[currentQuestionIndex];
   const currentConfidence = confidenceRatings[currentQuestionIndex];
-  const currentRetry = retryResults[currentQuestionIndex];
-  const canShowHint =
-    currentEvaluation && !currentEvaluation.correct && (currentHints?.currentLevel ?? 0) < 3;
-  const showRetryButton =
-    currentHints?.currentLevel === 3 && currentRetry === undefined && !retryMode;
+  
+  const questionFinished = currentEvaluation?.correct || (wrongAttempts[currentQuestionIndex] ?? 0) >= 3;
+
 
   // ─── Empty State ───
   if (questions.length === 0) {
@@ -627,7 +620,6 @@ export default function TriviaPanel() {
           onClick={() => {
             useSessionStore.getState().resetTrivia();
             setAnswerInput("");
-            setRetryMode(false);
           }}
           className="dc-btn dc-btn-secondary mt-2 w-full"
         >
@@ -657,45 +649,7 @@ export default function TriviaPanel() {
         </motion.div>
       )}
 
-      {/* Passive CodeWatch Alert (Feature 4) */}
-      <AnimatePresence>
-        {currentAlert && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`mx-4 mt-4 p-4 rounded-xl border relative shadow-lg ${
-              currentAlert.severity === "warning" 
-                ? "bg-amber-500/10 border-amber-500/30 text-amber-200" 
-                : "bg-zinc-800/50 border-zinc-700 text-zinc-300"
-            }`}
-          >
-            <button 
-                onClick={() => setCodeWatchAlert(null)}
-                className="absolute top-2 right-2 p-1 hover:bg-white/10 rounded transition-colors"
-            >
-                <X size={14} />
-            </button>
-            <div className="flex items-center gap-2 font-black text-[10px] uppercase tracking-widest mb-2">
-              <Info size={14} className={currentAlert.severity === "warning" ? "text-amber-500" : "text-zinc-400"} /> 
-              DeepCode Watch {currentAlert.severity === "warning" ? "Warning" : "Note"}
-            </div>
-            <h5 className="text-sm font-bold mb-1 text-white pr-6">{currentAlert.title}</h5>
-            <p className="text-[12px] leading-relaxed opacity-90 mb-3">{currentAlert.explanation}</p>
-            <button 
-                onClick={() => {
-                   // Force understand mode for this line
-                   useSessionStore.getState().setMode("understand");
-                   // In a real impl we'd scroll to line
-                   toast("Navigating to diagnostic...", { icon: "🔍" });
-                }}
-                className="w-full py-1.5 bg-white/10 hover:bg-white/20 rounded border border-white/10 text-[10px] font-black uppercase tracking-widest transition-all"
-            >
-                Deep-Dive Investigation
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
       <div
         className="px-4 py-3 flex items-center gap-3 "
         style={{
@@ -781,7 +735,7 @@ export default function TriviaPanel() {
             </p>
 
             {/* Confidence Rating (before answering) */}
-            {!currentEvaluation && !retryMode && (
+            {!currentEvaluation && (wrongAttempts[currentQuestionIndex] ?? 0) === 0 && (
               <div className="mb-6">
                 <label
                   className="text-xs font-medium mb-2 block"
@@ -821,15 +775,15 @@ export default function TriviaPanel() {
             )}
 
             {/* Answer Input */}
-            {(!currentEvaluation || retryMode) && (
+            {!questionFinished && (
               <div className="space-y-2">
                 <textarea
                   id="answer-input"
                   value={answerInput}
                   onChange={(e) => setAnswerInput(e.target.value)}
                   placeholder={
-                    retryMode
-                      ? "Try again from scratch — no hints this time..."
+                    (wrongAttempts[currentQuestionIndex] ?? 0) > 0
+                      ? `Try again! (Attempt ${(wrongAttempts[currentQuestionIndex] ?? 0) + 1}/3)`
                       : "Type your answer here (minimum 10 characters)..."
                   }
                   rows={4}
@@ -870,8 +824,6 @@ export default function TriviaPanel() {
                         <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         Evaluating...
                       </span>
-                    ) : retryMode ? (
-                      <span className="flex items-center gap-2"><RefreshCw className="inline" size={16} /> Submit Retry</span>
                     ) : (
                       "Submit Answer"
                     )}
@@ -882,7 +834,7 @@ export default function TriviaPanel() {
 
             {/* Evaluation Feedback */}
             <AnimatePresence>
-              {currentEvaluation && !retryMode && (
+              {currentEvaluation && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -946,37 +898,7 @@ export default function TriviaPanel() {
               )}
             </AnimatePresence>
 
-            {/* Retry result */}
-            {currentRetry !== undefined && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="rounded-2xl p-4 mt-3"
-                style={{
-                  background: currentRetry
-                    ? "var(--dc-success-muted)"
-                    : "var(--dc-warning-muted)",
-                  border: `1px solid ${
-                    currentRetry
-                      ? "rgba(63, 185, 80, 0.3)"
-                      : "rgba(210, 153, 34, 0.3)"
-                  }`,
-                }}
-              >
-                <span
-                  className="text-sm font-semibold"
-                  style={{
-                    color: currentRetry
-                      ? "var(--dc-success)"
-                      : "var(--dc-warning)",
-                  }}
-                >
-                  {currentRetry
-                    ? <span className="flex items-center gap-2"><CheckCircle2 className="inline text-dc-success" size={16} /> Understanding Confirmed! +2 pts</span>
-                    : "Keep practising — you'll get there"}
-                </span>
-              </motion.div>
-            )}
+
 
             {/* Hints */}
             <AnimatePresence>
@@ -1023,39 +945,9 @@ export default function TriviaPanel() {
               ))}
             </AnimatePresence>
 
-            {/* Hint / Retry / Next buttons */}
+            {/* Next / Finish buttons */}
             <div className="flex items-center gap-2 mt-4">
-              {canShowHint && (
-                <button
-                  id="show-hint-btn"
-                  onClick={handleRequestHint}
-                  disabled={hintLoading}
-                  className="dc-btn dc-btn-secondary text-sm"
-                >
-                  {hintLoading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Loading...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2"><Lightbulb className="inline" size={16} /> Hint {(currentHints?.currentLevel ?? 0) + 1}</span>
-                  )}
-                </button>
-              )}
-
-              {showRetryButton && (
-                <button
-                  id="retry-btn"
-                  onClick={handleRetry}
-                  className="dc-btn dc-btn-secondary text-sm"
-                >
-                  <RefreshCw className="inline" size={16} /> Try Again
-                </button>
-              )}
-
-              {(currentEvaluation?.correct ||
-                currentRetry !== undefined ||
-                (currentHints?.currentLevel === 3 && !showRetryButton)) && (
+              {questionFinished && (
                 <button
                   id="next-question-btn"
                   onClick={handleNext}

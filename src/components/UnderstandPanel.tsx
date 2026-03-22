@@ -88,10 +88,18 @@ export default function UnderstandPanel() {
   }, [scopedFunction, language, setActiveWalkthrough, setUnderstandLoading]);
 
   // Get the content of the clicked line
-  const getClickedLineContent = () => {
-    if (!clickedLine) return "";
+  // Get the neighborhood context of the clicked line
+  const getContextLines = () => {
+    if (!clickedLine) return [];
     const lines = code.split("\n");
-    return lines[clickedLine - 1]?.trim() ?? "";
+    const start = Math.max(0, clickedLine - 3); // Showing 2 lines above
+    const end = Math.min(lines.length, clickedLine + 2); // Showing 2 lines below
+    
+    return lines.slice(start, end).map((content, idx) => ({
+      lineNumber: start + idx + 1,
+      content,
+      isTarget: start + idx + 1 === clickedLine
+    }));
   };
 
   return (
@@ -158,38 +166,30 @@ export default function UnderstandPanel() {
               transition={{ duration: 0.3 }}
               className="space-y-3"
             >
-              {/* Line reference */}
+              {/* Line reference / Context Neighborhood */}
               <div
-                className="rounded-lg p-3"
+                className="rounded-lg border overflow-hidden"
                 style={{
                   background: "var(--dc-bg-elevated)",
-                  border: "1px solid var(--dc-border)",
+                  borderColor: "var(--dc-border)",
                 }}
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span
-                    className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                    style={{
-                      background: "var(--dc-warning-muted)",
-                      color: "var(--dc-warning)",
-                      border: "1px solid rgba(210, 153, 34, 0.3)",
-                    }}
-                  >
-                    Line {clickedLine}
-                  </span>
+                <div className="px-3 py-1.5 flex items-center gap-2 border-b" style={{ borderColor: "var(--dc-border-light)", background: "rgba(255,255,255,0.02)" }}>
+                   <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Neighborhood Context</span>
                 </div>
-                <code
-                  className="text-xs block p-2 rounded"
-                  style={{
-                    background: "var(--dc-bg-primary)",
-                    color: "var(--dc-accent-teal)",
-                    fontFamily: "var(--font-mono)",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {getClickedLineContent()}
-                </code>
+                <div className="p-2 font-mono text-[11px] leading-relaxed">
+                  {getContextLines().map((line) => (
+                    <div 
+                      key={line.lineNumber} 
+                      className={`flex gap-3 px-2 py-0.5 rounded ${line.isTarget ? 'bg-dc-accent-blue/10 border-l-2 border-dc-accent-blue' : ''}`}
+                    >
+                      <span className="w-4 text-right opacity-30 select-none">{line.lineNumber}</span>
+                      <span className={`${line.isTarget ? 'text-dc-text-primary font-bold' : 'text-dc-text-muted'}`}>
+                        {line.content || " "}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* What it does */}

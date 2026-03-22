@@ -23,7 +23,7 @@ export const EvaluationSchema = z.object({
   partial: z.boolean(),
   score_awarded: z.number().int().min(0).max(10),
   feedback: z.string(),
-  concept_gap: z.string().optional(),
+  concept_gap: z.string().nullish(),
 });
 
 export type Evaluation = z.infer<typeof EvaluationSchema>;
@@ -158,17 +158,3 @@ export const MutationPredictionSchema = z.object({
 });
 
 export type MutationPrediction = z.infer<typeof MutationPredictionSchema>;
-// ─── CodeWatch Diagnostic Schema (Feature 4) ───
-export const CodeWatchSchema = z.union([
-  z.object({ found: z.literal(false) }),
-  z.object({
-    found: z.literal(true),
-    severity: z.enum(["warning", "info"]),
-    title: z.string(),
-    explanation: z.string(),
-    affectedLine: z.number().nullable(),
-  }),
-]);
-
-export type CodeWatchResult = z.infer<typeof CodeWatchSchema>;
-export type CodeWatchAlert = Extract<CodeWatchResult, { found: true }>;

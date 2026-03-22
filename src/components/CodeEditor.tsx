@@ -23,18 +23,59 @@ export default function CodeEditor() {
 
   const { code, language, scopedFunction, setCode, setCursorLine, setScopedFunction } =
     useEditorStore();
-  const { mode,    heatmapData, 
+  const { mode, heatmapData, 
     clickedLine, 
     setClickedLine, 
-    setActiveLineExplanation, 
-    setUnderstandLoading, 
-    setCodeWatchAlert,
-    currentAlert
+    setActiveLineExplanation,
+    setUnderstandLoading
   } =
     useSessionStore();
 
-  const codeWatchDecorationsRef = useRef<string[]>([]);
-  const lastAnalyzedHashRef = useRef<string | null>(null);
+  const triggerExplanation = useCallback(
+    async (lineNumber: number, lineContent: string, currentCode: string, currentLanguage: string) => {
+      setUnderstandLoading(true);
+      setActiveLineExplanation(null);
+
+      try {
+        // Extract context (±2 lines)
+        const allLines = currentCode.split("\n");
+        const startIndex = Math.max(0, lineNumber - 3);
+        const endIndex = Math.min(allLines.length - 1, lineNumber + 1);
+        
+        const contextLines = allLines.slice(startIndex, endIndex + 1);
+        const targetLineIndex = (lineNumber - 1) - startIndex;
+
+        const scope = extractScope(currentCode, lineNumber);
+        const res = await fetch("/api/explain-line", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lineContent,
+            lineNumber,
+            contextLines,
+            targetLineIndex,
+            functionCode: scope.scopedCode,
+            language: currentLanguage,
+          }),
+        });
+
+        if (!res.ok) throw new Error("Failed to get explanation");
+
+        const data = await res.json();
+        setActiveLineExplanation(data);
+      } catch {
+        console.error("Line explanation failed");
+      } finally {
+        setUnderstandLoading(false);
+      }
+    },
+    [setUnderstandLoading, setActiveLineExplanation]
+  );
+
+  const triggerExplanationRef = useRef(triggerExplanation);
+  useEffect(() => {
+    triggerExplanationRef.current = triggerExplanation;
+  }, [triggerExplanation]);
 
   const handleEditorMount: OnMount = useCallback(
     (editor) => {
@@ -57,7 +98,8 @@ export default function CodeEditor() {
 
       // Handle line clicks in Understand mode
       editor.onMouseDown((e) => {
-        if (mode === "understand" && e.target.position) {
+        const currentMode = useSessionStore.getState().mode;
+        if (currentMode === "understand" && e.target.position) {
           const lineNumber = e.target.position.lineNumber;
           setClickedLine(lineNumber);
 
@@ -66,7 +108,11 @@ export default function CodeEditor() {
           if (lineModel) {
             const lineContent = lineModel.getLineContent(lineNumber);
             if (lineContent.trim()) {
-              fetchLineExplanation(lineNumber, lineContent);
+              // Trigger explanation directly from store to avoid stale closures
+              const currentCode = useEditorStore.getState().code;
+              const currentLanguage = useEditorStore.getState().language;
+              
+              triggerExplanationRef.current(lineNumber, lineContent, currentCode, currentLanguage);
             }
           }
         }
@@ -84,36 +130,13 @@ export default function CodeEditor() {
     [mode]
   );
 
+
+
   const fetchLineExplanation = useCallback(
     async (lineNumber: number, lineContent: string) => {
-      setUnderstandLoading(true);
-      setActiveLineExplanation(null);
-
-      try {
-        const scope = extractScope(code, lineNumber);
-        const res = await fetch("/api/explain-line", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            lineContent,
-            lineNumber,
-            functionCode: scope.scopedCode,
-            language,
-          }),
-        });
-
-        if (!res.ok) throw new Error("Failed to get explanation");
-
-        const data = await res.json();
-        setActiveLineExplanation(data);
-      } catch {
-        console.error("Line explanation failed");
-      } finally {
-        setUnderstandLoading(false);
-      }
+        triggerExplanation(lineNumber, lineContent, code, language);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [code, language]
+    [code, language, triggerExplanation]
   );
 
   const handleChange: OnChange = useCallback(
@@ -154,70 +177,13 @@ export default function CodeEditor() {
     }
   }, [clickedLine, mode, isEditorReady]);
 
-  // CodeWatch: Passive Scan (Feature 4)
-  useEffect(() => {
-    if (!scopedFunction) return;
 
-    // Simple hash to avoid redundant API calls
-    const hash = btoa(unescape(encodeURIComponent(scopedFunction))).slice(0, 16);
-    if (hash === lastAnalyzedHashRef.current) return;
 
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch("/api/codewatch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: scopedFunction, language }),
-        });
-
-        if (!res.ok) throw new Error();
-        const result = await res.json();
-
-        if (result.found) {
-          setCodeWatchAlert(result);
-          lastAnalyzedHashRef.current = hash;
-          
-          if (editorRef.current) {
-            const startLine = (useEditorStore.getState().scopeStartLine ?? 1);
-            const relativeLine = result.affectedLine ?? 1;
-            const targetLine = startLine + relativeLine - 1;
-
-            const decoration: MonacoEditor.IModelDeltaDecoration = {
-              range: { startLineNumber: targetLine, startColumn: 1, endLineNumber: targetLine, endColumn: 1 },
-              options: {
-                isWholeLine: true,
-                className: result.severity === "warning" ? "codewatch-warning" : "codewatch-info",
-                glyphMarginClassName: result.severity === "warning" ? "codewatch-warning-glyph" : "codewatch-info-glyph",
-                hoverMessage: { value: `**DEEPCODE WATCH**: ${result.explanation}` }
-              }
-            };
-
-            codeWatchDecorationsRef.current = editorRef.current.deltaDecorations(
-              codeWatchDecorationsRef.current,
-              [decoration]
-            );
-          }
-          toast(`DeepCode found an issue: ${result.title}`, { icon: "🧐" });
-        } else {
-          setCodeWatchAlert(null);
-          lastAnalyzedHashRef.current = hash;
-          if (editorRef.current) {
-            codeWatchDecorationsRef.current = editorRef.current.deltaDecorations(codeWatchDecorationsRef.current, []);
-          }
-        }
-      } catch (e) {
-        console.error("CodeWatch failed", e);
-      }
-    }, 8000); // Debounce diagnostic to 8 seconds
-
-    return () => clearTimeout(timer);
-  }, [scopedFunction, language, setCodeWatchAlert]);
-
-  // Sync editor read-only with mode
+  // Sync editor read-only with mode (DEPRECATED - User wants it editable)
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.updateOptions({
-        readOnly: mode === "understand",
+        readOnly: false,
       });
     }
   }, [mode]);
