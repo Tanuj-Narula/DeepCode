@@ -49,7 +49,7 @@ export default function ResizableLayout({
   }, [isResizingH, isResizingV]);
 
   return (
-    <div ref={containerRef} className="flex-1 flex overflow-hidden border-t border-zinc-800" style={{ cursor: isResizingH ? 'col-resize' : isResizingV ? 'ns-resize' : 'auto' }}>
+    <div ref={containerRef} className="flex-1 flex overflow-hidden border-t" style={{ borderColor: 'var(--dc-border)', cursor: isResizingH ? 'col-resize' : isResizingV ? 'ns-resize' : 'auto' }}>
       
       {/* Left panel (Editor) */}
       <section 
@@ -61,13 +61,13 @@ export default function ResizableLayout({
 
       {/* Vertical Resize Handle (Horizontal Split) */}
       <div 
-        className="w-1.5 relative group flex items-center justify-center cursor-col-resize hover:bg-zinc-800 transition-colors z-20"
+        className="w-1.5 relative group flex items-center justify-center cursor-col-resize hover:bg-[var(--dc-bg-elevated)] transition-colors z-20"
         onMouseDown={(e) => {
            e.preventDefault();
            setIsResizingH(true);
         }}
       >
-        <div className={`w-0.5 h-12 rounded-full transition-colors ${isResizingH ? "bg-[#ea580c]" : "bg-zinc-700 group-hover:bg-[#ea580c]"}`} />
+        <div className={`w-0.5 h-12 rounded-full transition-colors ${isResizingH ? "bg-[var(--dc-accent-orange)]" : "bg-[var(--dc-border-accent)] group-hover:bg-[var(--dc-accent-orange)]"}`} />
       </div>
 
       {/* Right side container */}
@@ -77,7 +77,7 @@ export default function ResizableLayout({
         style={{ backgroundColor: "var(--dc-bg-secondary)", borderColor: "var(--dc-border)" }}
       >
         <div style={{ height: `${rightPanelHeight}%`, position: 'relative' }} className="flex flex-col overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-4 bg-linear-to-b from-black/20 to-transparent pointer-events-none z-10" />
+            <div className="absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-[var(--dc-bg-primary)] opacity-20 pointer-events-none z-10" />
             {rightPanel}
         </div>
 
@@ -85,16 +85,16 @@ export default function ResizableLayout({
             <>
                 {/* Horizontal Resize Handle (Vertical Split) */}
                 <div 
-                  className="h-1.5 w-full relative group flex items-center justify-center cursor-row-resize hover:bg-zinc-800 transition-colors z-20"
+                  className="h-1.5 w-full relative group flex items-center justify-center cursor-row-resize hover:bg-[var(--dc-bg-elevated)] transition-colors z-20"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setIsResizingV(true);
                   }}
                 >
-                    <div className={`h-0.5 w-12 rounded-full transition-colors ${isResizingV ? "bg-[#ea580c]" : "bg-zinc-700 group-hover:bg-[#ea580c]"}`} />
+                    <div className={`h-0.5 w-12 rounded-full transition-colors ${isResizingV ? "bg-[var(--dc-accent-orange)]" : "bg-[var(--dc-border-accent)] group-hover:bg-[var(--dc-accent-orange)]"}`} />
                 </div>
                 
-                <div className="flex-1 overflow-y-auto flex flex-col border-t border-zinc-800/40">
+                <div className="flex-1 overflow-y-auto flex flex-col border-t" style={{ borderColor: "var(--dc-border)" }}>
                     {bottomPanel}
                 </div>
             </>

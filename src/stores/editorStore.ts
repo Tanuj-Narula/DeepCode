@@ -16,41 +16,7 @@ interface EditorState {
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
-  code: `// Paste your code here, or try this example:
-
-async function fetchUserData(userId) {
-  if (!userId) {
-    throw new Error("userId is required");
-  }
-
-  try {
-    const response = await fetch(\`/api/users/\${userId}\`);
-
-    if (!response.ok) {
-      throw new Error(\`HTTP \${response.status}: Failed to fetch user\`);
-    }
-
-    const data = await response.json();
-
-    const { name, email, preferences = {} } = data;
-
-    return {
-      ...data,
-      displayName: name || email.split("@")[0],
-      isVerified: Boolean(data.verifiedAt),
-      preferences: {
-        theme: "dark",
-        notifications: true,
-        ...preferences,
-      },
-    };
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error("Network error — check your connection");
-    }
-    throw error;
-  }
-}`,
+  code: `// Add code in JavaScript\n\nconsole.log("Hello World!");`,
   language: "javascript",
   cursorLine: 1,
   scopedFunction: null,

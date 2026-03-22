@@ -226,64 +226,73 @@ export default function CodeEditor() {
     javascript: "javascript",
     typescript: "typescript",
     python: "python",
+    java: "java",
+    cpp: "cpp",
+    go: "go",
+    rust: "rust",
+    csharp: "csharp",
   };
 
   return (
-    <div className="flex-1 min-w-0 h-full relative">
-      {/* Editor status bar */}
-      <div
-        className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-1.5"
-        style={{
-          background: "var(--dc-bg-tertiary)",
-          borderBottom: "1px solid var(--dc-border)",
-          fontSize: "0.75rem",
-          color: "var(--dc-text-muted)",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1">
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{
-                background:
-                  mode === "understand"
-                    ? "var(--dc-accent-purple)"
-                    : "var(--dc-success)",
-              }}
-            />
-            {mode === "understand" ? "Click a line to explain" : "Editor ready"}
+    <div className="flex-1 min-w-0 h-full p-4">
+      <div className="relative w-full h-full rounded-xl flex flex-col overflow-hidden border shadow-sm transition-all" style={{ borderColor: "var(--dc-border)", backgroundColor: "var(--dc-bg-primary)" }}>
+        {/* Editor status bar */}
+        <div
+          className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-1.5"
+          style={{
+            background: "var(--dc-bg-tertiary)",
+            borderBottom: "1px solid var(--dc-border)",
+            fontSize: "0.75rem",
+            color: "var(--dc-text-muted)",
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{
+                  background:
+                    mode === "understand"
+                      ? "var(--dc-accent-purple)"
+                      : "var(--dc-success)",
+                }}
+              />
+              {mode === "understand" ? "Click a line to explain" : "Editor ready"}
+            </span>
+          </div>
+          <span style={{ fontFamily: "var(--font-ibm-mono)" }}>
+            {language.toUpperCase()}
           </span>
         </div>
-        <span style={{ fontFamily: "var(--font-ibm-mono)" }}>
-          {language.toUpperCase()}
-        </span>
-      </div>
 
-      <Editor
-        height="100%"
-        language={monacoLanguageMap[language] || "javascript"}
-        value={code}
-        onChange={handleChange}
-        onMount={handleEditorMount}
-        theme={resolvedTheme === "light" ? "light" : "vs-dark"}
-        options={{
-          fontSize: 14,
-          fontFamily: "'IBM Plex Mono', var(--font-ibm-mono), SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-          minimap: { enabled: false },
-          lineNumbers: "on",
-          scrollBeyondLastLine: false,
-          padding: { top: 24, bottom: 24 },
-          glyphMargin: true,
-          folding: true,
-          wordWrap: "on",
-          automaticLayout: true,
-          renderLineHighlight: "gutter",
-          cursorBlinking: "smooth",
-          cursorSmoothCaretAnimation: "on",
-          smoothScrolling: true,
-          bracketPairColorization: { enabled: true },
-        }}
-      />
+        <div className="flex-1 pt-6 relative">
+          <Editor
+            height="100%"
+            language={monacoLanguageMap[language] || "javascript"}
+            value={code}
+            onChange={handleChange}
+            onMount={handleEditorMount}
+            theme={resolvedTheme === "light" ? "light" : "vs-dark"}
+            options={{
+              fontSize: 14,
+              fontFamily: "'IBM Plex Mono', var(--font-ibm-mono), SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+              minimap: { enabled: false },
+              lineNumbers: "on",
+              scrollBeyondLastLine: false,
+              padding: { top: 16, bottom: 24 },
+              glyphMargin: true,
+              folding: true,
+              wordWrap: "on",
+              automaticLayout: true,
+              renderLineHighlight: "gutter",
+              cursorBlinking: "smooth",
+              cursorSmoothCaretAnimation: "on",
+              smoothScrolling: true,
+              bracketPairColorization: { enabled: true },
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

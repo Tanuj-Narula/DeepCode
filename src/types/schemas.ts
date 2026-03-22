@@ -100,7 +100,7 @@ export const RubberDuckEvalSchema = z.object({
 export type RubberDuckEval = z.infer<typeof RubberDuckEvalSchema>;
 
 // ─── Supported Languages ───
-export type SupportedLanguage = "javascript" | "typescript" | "python";
+export type SupportedLanguage = "javascript" | "typescript" | "python" | "java" | "cpp" | "go" | "rust" | "csharp";
 
 // ─── Mode Types ───
 export type AppMode = "trivia" | "understand";
