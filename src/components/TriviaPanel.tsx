@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import { useEditorStore } from "@/stores/editorStore";
 import { useSessionStore } from "@/stores/sessionStore";
-import type { Evaluation, HintProgress, HeatmapStatus } from "@/types/schemas";
-import { RefreshCw, Target, BookOpen, HelpCircle, Lightbulb, XCircle, Beaker, CheckCircle2, Sparkles, Info, X, Trophy } from "lucide-react";
+import { useHistoryStore } from "@/stores/historyStore";
+import type { Evaluation, HintProgress } from "@/types/schemas";
+import { RefreshCw, Target, BookOpen, HelpCircle, Lightbulb, XCircle, Beaker, CheckCircle2, Sparkles, Info, X } from "lucide-react";
 
 
 export default function TriviaPanel() {
@@ -35,11 +36,9 @@ export default function TriviaPanel() {
     updateScore,
     wrongAttempts,
     setWrongAttempt,
-    setHeatmapData,
     addSessionResult,
     setMode,
     sessionResults,
-    setRoleReadiness,
   } = useSessionStore();
 
   const [answerInput, setAnswerInput] = useState("");
@@ -59,30 +58,6 @@ export default function TriviaPanel() {
       setCompleteTimeMs(null);
     }
   }, [triviaComplete, completeTimeMs]);
-
-  const handleCheckReadiness = async () => {
-    const role = window.prompt("Target Role? (frontend_mid, backend_mid, fullstack_mid)", "fullstack_mid");
-    if (!role) return;
-
-    setEvaluatingReadiness(true);
-    toast.loading("Benchmarking your performance against role standards...", { id: "readiness-gen" });
-
-    try {
-      const res = await fetch("/api/role-readiness", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role, sessionHistory: sessionResults }),
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setRoleReadiness(data);
-      toast.success("Role Readiness Report generated!", { id: "readiness-gen" });
-    } catch {
-      toast.error("Failed to generate readiness report", { id: "readiness-gen" });
-    } finally {
-      setEvaluatingReadiness(false);
-    }
-  };
 
   // Generate questions
   const handleGenerateQuestions = useCallback(async () => {
@@ -241,43 +216,27 @@ export default function TriviaPanel() {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       setAnswerInput("");
     } else {
-      // Session complete — generate heatmap
-      const heatmap: Record<number, HeatmapStatus> = {};
-      const editorCode = useEditorStore.getState().code;
-      const lines = editorCode.split("\n");
-
-      questions.forEach((q, idx) => {
-        const evaluation = evaluations[idx];
-        const scopeStart = useEditorStore.getState().scopeStartLine ?? 1;
-
-        // Color lines based on answers
-        const linesPerQuestion = Math.ceil(lines.length / 3);
-        const start = scopeStart + idx * linesPerQuestion;
-        const end = Math.min(start + linesPerQuestion, lines.length);
-
-        for (let i = start; i <= end; i++) {
-          if (evaluation?.correct) {
-            heatmap[i] = "green";
-          } else if (evaluation?.partial) {
-            heatmap[i] = "amber";
-          } else if (evaluation) {
-            heatmap[i] = "red";
-          } else {
-            heatmap[i] = "grey";
-          }
-        }
-      });
-
-      setHeatmapData(heatmap);
+      // Session complete
       setTriviaComplete(true);
 
-      // Persist this session to history (Feature 5)
-      const score = (totalScore / (questions.length * 10)) * 100;
-      addSessionResult({
-          timestamp: Date.now(),
-          concepts: questions.map(q => q.concept_tag || "logic"),
-          avgScore: score,
-          totalQuestions: questions.length
+      // Persist to LocalStorage history
+      const sessionState = useSessionStore.getState();
+      useHistoryStore.getState().addSession({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        durationMs: sessionState.sessionStartTime ? Date.now() - sessionState.sessionStartTime : 0,
+        language,
+        seedConcept: sessionState.seedConcept,
+        totalScore,
+        maxPossibleScore,
+        results: questions.map((q, idx) => ({
+          conceptTag: q.concept_tag,
+          difficulty: q.difficulty,
+          correct: evaluations[idx]?.correct ?? false,
+          partial: evaluations[idx]?.partial ?? false,
+          scoreAwarded: evaluations[idx]?.score_awarded ?? 0,
+          hintsUsed: hintProgress[idx]?.hints?.length ?? 0,
+        })),
       });
 
       toast.success("Session complete! Check your results.");
@@ -286,11 +245,12 @@ export default function TriviaPanel() {
     currentQuestionIndex,
     questions,
     evaluations,
-    setCurrentQuestionIndex,
-    setHeatmapData,
-    setTriviaComplete,
-    addSessionResult,
+    hintProgress,
+    language,
     totalScore,
+    maxPossibleScore,
+    setCurrentQuestionIndex,
+    setTriviaComplete,
   ]);
 
   const currentQuestion = questions[currentQuestionIndex];
@@ -389,20 +349,7 @@ export default function TriviaPanel() {
     const strongConcepts = conceptResults.filter((c) => c.correct);
     const weakConcepts = conceptResults.filter((c) => !c.correct);
 
-    // Resource links for weak concepts
-    const conceptResourceLinks: Record<string, string> = {
-      async_await: "https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Asynchronous/Promises",
-      error_handling: "https://javascript.info/error-handling",
-      closures: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Closures",
-      destructuring: "https://javascript.info/destructuring-assignment",
-      promises: "https://javascript.info/promise-basics",
-      fetch_api: "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
-      optional_chaining: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Optional_chaining",
-      spread_operator: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax",
-      type_coercion: "https://javascript.info/type-conversions",
-      scope: "https://developer.mozilla.org/en-US/docs/Glossary/Scope",
-      default_parameters: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/Default_parameters",
-    };
+
 
     return (
       <motion.div
@@ -548,34 +495,19 @@ export default function TriviaPanel() {
               📚 Revisit These Concepts
             </h4>
             <div className="space-y-2">
-              {weakConcepts.map((c, idx) => {
-                const resourceUrl =
-                  conceptResourceLinks[c.tag] ||
-                  `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(c.tag.replace(/_/g, " "))}`;
-                return (
-                  <a
-                    key={idx}
-                    href={resourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between p-2 rounded-lg text-sm transition-all duration-150"
-                    style={{
-                      background: "var(--dc-bg-elevated)",
-                      color: "var(--dc-text-link)",
-                      textDecoration: "none",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "var(--dc-bg-surface)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "var(--dc-bg-elevated)")
-                    }
-                  >
-                    <span>{c.tag.replace(/_/g, " ")}</span>
-                    <span style={{ color: "var(--dc-text-muted)" }}>↗ MDN / JS.info</span>
-                  </a>
-                );
-              })}
+              {weakConcepts.map((c, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-2.5 rounded-lg text-sm"
+                  style={{
+                    background: "var(--dc-bg-elevated)",
+                    color: "var(--dc-text-primary)",
+                  }}
+                >
+                  <span className="font-medium">{c.tag.replace(/_/g, " ")}</span>
+                  <Lightbulb size={14} style={{ color: "var(--dc-text-muted)" }} />
+                </div>
+              ))}
             </div>
           </motion.div>
         )}
@@ -598,19 +530,6 @@ export default function TriviaPanel() {
           </p>
         </motion.div>
 
-        {/* Role Readiness Button (Feature 5) */}
-        <button
-          onClick={handleCheckReadiness}
-          disabled={evaluatingReadiness || sessionResults.length === 0}
-          className="dc-btn dc-btn-primary mt-4 w-full"
-        >
-          {evaluatingReadiness ? (
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-              <Trophy size={16} />
-          )}
-          Check Role Readiness
-        </button>
 
         {/* Try again button */}
         <button
@@ -629,23 +548,6 @@ export default function TriviaPanel() {
   // ─── Active Question ───
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* Seed Session Banner (Feature 1) */}
-      {isSeedSession && seedConcept && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="mx-4 mt-4 p-4 rounded-xl border border-orange-500/20 bg-orange-500/5"
-        >
-          <div className="flex items-center gap-2 text-orange-400 font-black text-[11px] uppercase tracking-widest mb-1.5">
-            <Sparkles size={14} className="animate-pulse" /> Seed Session Active
-          </div>
-          <p className="text-[13px] text-zinc-300 leading-relaxed">
-            This workspace was generated to teach: <span className="text-white font-bold">{seedConcept}</span>. 
-            It contains at least one intentional edge case.
-          </p>
-        </motion.div>
-      )}
-
 
       <div
         className="px-4 py-3 flex items-center gap-3 "

@@ -13,6 +13,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Inject randomness so the same code yields different questions each session
+    const variationSeed = Math.floor(Math.random() * 10000);
+    const focusAngles = [
+      "focus on runtime behaviour and side effects",
+      "focus on error conditions and failure modes",
+      "focus on performance and memory implications",
+      "focus on readability, naming, and code style choices",
+      "focus on alternative implementations and trade-offs",
+      "focus on how this interacts with the rest of a typical program",
+    ];
+    const focusHint = focusAngles[Math.floor(Math.random() * focusAngles.length)];
+
     const systemPrompt = `You are an expert code examiner for DeepCode AI. Your job is to generate exactly 3 questions that test whether a developer truly understands a specific piece of code.
 
 Rules:
@@ -20,6 +32,7 @@ Rules:
 - Each question MUST test a DIFFERENT concept — ensure all three concept_tags are distinct
 - Each question tests a different depth of understanding
 - Return ONLY valid JSON, no other text
+- Session variation seed: ${variationSeed} (use this to explore different question angles each time)
 
 Question types:
 1. "surface" — What does this code do? (tests reading comprehension)
@@ -31,6 +44,7 @@ For each question, include:
 - expected_keywords: 3-5 keywords a correct answer should mention`;
 
     const userPrompt = `Language: ${language}
+Session angle: ${focusHint}
 
 Code to generate questions for:
 \`\`\`${language}
@@ -67,7 +81,7 @@ Generate exactly 3 questions. Return JSON matching this structure:
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.7,
+      temperature: 0.9,
       maxTokens: 1500,
     });
 

@@ -9,25 +9,30 @@ import { useTheme } from "next-themes";
 import toast from "react-hot-toast";
 import { extractScope } from "@/lib/scopeExtractor";
 import {
-  applyHeatmapDecorations,
+  applyContextRangeDecoration,
   applyActiveLineDecoration,
   clearDecorations,
 } from "@/lib/heatmapDecorations";
 
 export default function CodeEditor() {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
-  const heatmapDecorationsRef = useRef<string[]>([]);
   const activeLineDecorationsRef = useRef<string[]>([]);
+  const contextDecorationsRef = useRef<string[]>([]);
   const [isEditorReady, setIsEditorReady] = useState(false);
+  // Snapshot of scope at question-generation time — stays locked for the whole session
+  const [lockedScope, setLockedScope] = useState<{ start: number; end: number } | null>(null);
   const { resolvedTheme } = useTheme();
 
-  const { code, language, scopedFunction, setCode, setCursorLine, setScopedFunction } =
+  const { code, language, scopedFunction, scopeStartLine, scopeEndLine, setCode, setCursorLine, setScopedFunction } =
     useEditorStore();
-  const { mode, heatmapData, 
-    clickedLine, 
-    setClickedLine, 
+  const { mode,
+    questions,
+    triviaComplete,
+    clickedLine,
+    setClickedLine,
     setActiveLineExplanation,
-    setUnderstandLoading
+    setUnderstandLoading,
+    resetTrivia,
   } =
     useSessionStore();
 
@@ -148,28 +153,6 @@ export default function CodeEditor() {
     [setCode]
   );
 
-  // Apply heatmap decorations when heatmap data changes
-  useEffect(() => {
-    if (editorRef.current && isEditorReady) {
-      if (Object.keys(heatmapData).length > 0) {
-        heatmapDecorationsRef.current = applyHeatmapDecorations(
-          editorRef.current,
-          heatmapData,
-          heatmapDecorationsRef.current
-        );
-      } else {
-        heatmapDecorationsRef.current = clearDecorations(
-          editorRef.current,
-          heatmapDecorationsRef.current
-        );
-      }
-    }
-  }, [heatmapData, isEditorReady]);
-
-  // Clear heatmap on reset, language change, or mode shift
-  useEffect(() => {
-    useSessionStore.getState().setHeatmapData({});
-  }, [mode, language, code]);
 
   // Apply active line decoration in Understand mode
   useEffect(() => {
@@ -188,6 +171,59 @@ export default function CodeEditor() {
       }
     }
   }, [clickedLine, mode, isEditorReady]);
+
+  // Reset trivia when the user pastes new code or changes the language
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    // Only reset if a session is actually in progress
+    if (useSessionStore.getState().questions.length > 0) {
+      resetTrivia();
+    }
+  // intentionally NOT including `mode` so switching modes doesn't reset
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, language]);
+
+  // Snapshot scope when questions first appear; clear when session resets
+  useEffect(() => {
+    if (questions.length > 0 && !triviaComplete) {
+      // Only set once — never update mid-session so the highlight stays frozen
+      setLockedScope(prev => {
+        if (prev) return prev; // already locked
+        if (scopeStartLine != null && scopeEndLine != null) {
+          return { start: scopeStartLine, end: scopeEndLine };
+        }
+        return null;
+      });
+    } else {
+      setLockedScope(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions.length, triviaComplete]);
+
+  // Highlight the locked scope context while a trivia question is active
+  useEffect(() => {
+    if (!editorRef.current || !isEditorReady) return;
+
+    if (lockedScope && mode === "trivia" && questions.length > 0 && !triviaComplete) {
+      contextDecorationsRef.current = applyContextRangeDecoration(
+        editorRef.current,
+        lockedScope.start,
+        lockedScope.end,
+        contextDecorationsRef.current
+      );
+      // Scroll only when scope is first locked (questions just generated)
+      editorRef.current.revealLinesInCenter(lockedScope.start, lockedScope.end, 0);
+    } else {
+      contextDecorationsRef.current = clearDecorations(
+        editorRef.current,
+        contextDecorationsRef.current
+      );
+    }
+  }, [lockedScope, mode, questions.length, triviaComplete, isEditorReady]);
 
 
 

@@ -1,41 +1,96 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callAI } from "@/lib/ai";
+import { callAI, parseAIResponse } from "@/lib/ai";
 import { z } from "zod";
+import type { SupportedLanguage } from "@/types/schemas";
 
 const SeedRequestSchema = z.object({
   concept: z.string(),
   difficulty: z.enum(["beginner", "intermediate", "advanced"]),
+  language: z.string().optional(), // if omitted, auto-detected
 });
+
+// Heuristic map: concept keywords → best language
+const CONCEPT_TO_LANGUAGE: Array<{ keywords: string[]; language: SupportedLanguage }> = [
+  { keywords: ["goroutine", "channel", "concurrency", "go routine", "select", "waitgroup"], language: "go" },
+  { keywords: ["ownership", "borrow", "lifetime", "trait", "cargo", "unsafe", "memory safety", "rust"], language: "rust" },
+  { keywords: ["pointer", "memory", "malloc", "template", "stl", "vector", "c++", "cpp", "destructor", "raii"], language: "cpp" },
+  { keywords: ["thread", "jvm", "interface", "generics", "spring", "maven", "java", "inheritance", "polymorphism", "oop"], language: "java" },
+  { keywords: ["list comprehension", "decorator", "generator", "pandas", "numpy", "asyncio", "python", "lambda", "dict", "slice"], language: "python" },
+  { keywords: ["linq", "delegate", "async/await c#", "csharp", "c#", ".net", "nullable", "extension method"], language: "csharp" },
+  { keywords: ["type", "interface", "generic", "enum", "union", "typescript", "ts ", " ts"], language: "typescript" },
+];
+
+function detectLanguage(concept: string): SupportedLanguage {
+  const lower = concept.toLowerCase();
+  for (const { keywords, language } of CONCEPT_TO_LANGUAGE) {
+    if (keywords.some((kw) => lower.includes(kw))) return language;
+  }
+  // Default to JavaScript for JS ecosystem concepts
+  return "javascript";
+}
+
+const LANGUAGE_FUNCTION_STYLES: Record<SupportedLanguage, string> = {
+  javascript: "a JavaScript function (function keyword or arrow function)",
+  typescript: "a TypeScript function with proper type annotations",
+  python: "a Python function using def keyword",
+  java: "a Java static method inside a class (no package declaration needed, just the class)",
+  cpp: "a C++ function (may include a simple main or standalone function)",
+  go: "a Go function (include package main and import if needed)",
+  rust: "a Rust function (include fn keyword, add main if needed to demonstrate)",
+  csharp: "a C# static method inside a class",
+};
+
+const VALIDATION_KEYWORDS: Record<SupportedLanguage, string[]> = {
+  javascript: ["function", "=>", "const ", "let ", "var "],
+  typescript: ["function", "=>", "const ", "let ", ": string", ": number", ": boolean"],
+  python: ["def ", "return", ":", "    "],
+  java: ["class ", "public ", "void ", "static ", "return"],
+  cpp: ["int ", "void ", "return", "{", "#include"],
+  go: ["func ", "package", "return", "{"],
+  rust: ["fn ", "let ", "->", "{"],
+  csharp: ["class ", "static ", "void ", "public ", "return"],
+};
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { concept, difficulty } = SeedRequestSchema.parse(body);
+    const { concept, difficulty, language: requestedLang } = SeedRequestSchema.parse(body);
 
-    const systemPrompt = `You are a coding educator. Generate a single, self-contained JavaScript/TypeScript function that is PEDAGOGICALLY DESIGNED to expose the full complexity of [${concept}] at [${difficulty}] level. 
-The function must: have at least one non-obvious edge case, use real-world naming (not foo/bar), be 15-40 lines, include NO inline comments (the student must figure it out). 
-Return only the raw function code, nothing else.`;
+    const language: SupportedLanguage = (requestedLang as SupportedLanguage) || detectLanguage(concept);
+    const style = LANGUAGE_FUNCTION_STYLES[language];
+
+    const systemPrompt = `You are a coding educator. Generate a SINGLE self-contained code snippet in ${language.toUpperCase()} that is pedagogically designed to expose the full complexity of "${concept}" at ${difficulty} level.
+
+Requirements:
+- Write ${style}
+- 15-40 lines long  
+- Must demonstrate the concept "${concept}" clearly and specifically
+- Use real-world naming (not foo/bar)  
+- NO inline comments (student must figure it out)
+- Include at least one non-obvious edge case or behaviour
+- The code must be SYNTACTICALLY CORRECT ${language.toUpperCase()}
+- Return ONLY the raw code. No markdown, no explanation, no backticks.`;
 
     const rawResponse = await callAI({
-      task: "lineExplanation", // Using a quality-oriented model as per PRD for complex generation
+      task: "lineExplanation",
       messages: [{ role: "system", content: systemPrompt }],
-      temperature: 0.7,
+      temperature: 0.8,
       maxTokens: 2000,
     });
 
-    // Strip markdown if AI wraps it
+    // Strip markdown fences if AI wraps them
     let code = rawResponse.trim();
-    if (code.startsWith("```")) {
-      const lines = code.split("\n");
-      code = lines.slice(1, -1).join("\n").trim();
+    const fenceMatch = code.match(/^```(?:\w+)?\n([\s\S]*?)```$/);
+    if (fenceMatch) code = fenceMatch[1]!.trim();
+
+    // Validate that generated code contains language-appropriate keywords
+    const validKeywords = VALIDATION_KEYWORDS[language];
+    const isValid = validKeywords.some((kw) => code.includes(kw));
+    if (!code || !isValid) {
+      throw new Error(`Invalid ${language} code generated — missing expected syntax markers`);
     }
 
-    // Validation: must be non-empty string, must contain 'function' or '=>'
-    if (!code || (!code.includes("function") && !code.includes("=>"))) {
-      throw new Error("Invalid code generated by AI");
-    }
-
-    return NextResponse.json({ code });
+    return NextResponse.json({ code, language });
   } catch (error) {
     console.error("Seed generation error:", error);
     return NextResponse.json(
@@ -44,3 +99,4 @@ Return only the raw function code, nothing else.`;
     );
   }
 }
+

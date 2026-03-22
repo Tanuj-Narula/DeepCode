@@ -6,11 +6,10 @@ import type {
   HintProgress,
   LineExplanation,
   Walkthrough,
-  HeatmapStatus,
   SessionResult,
   GlobalHistoryResult,
 } from "@/types/schemas";
-import { RoleReadiness } from "@/data/roleReadiness";
+
 
 interface SessionState {
   // Mode
@@ -36,8 +35,6 @@ interface SessionState {
   clickedLine: number | null;
   understandLoading: boolean;
 
-  // Heatmap
-  heatmapData: Record<number, HeatmapStatus>;
 
   // Scoring
   totalScore: number;
@@ -65,9 +62,6 @@ interface SessionState {
   setWrongAttempt: (questionIndex: number, count: number) => void;
 
 
-  // Role Readiness (Feature 5)
-  roleReadiness: RoleReadiness | null;
-  setRoleReadiness: (readiness: RoleReadiness | null) => void;
 
   // Actions — Understand
   setActiveLineExplanation: (exp: LineExplanation | null) => void;
@@ -75,8 +69,6 @@ interface SessionState {
   setClickedLine: (line: number | null) => void;
   setUnderstandLoading: (loading: boolean) => void;
 
-  // Actions — Heatmap
-  setHeatmapData: (data: Record<number, HeatmapStatus>) => void;
 
   // Actions — Score
   updateScore: (points: number) => void;
@@ -105,13 +97,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   clickedLine: null,
   understandLoading: false,
 
-  heatmapData: {},
   totalScore: 0,
   maxPossibleScore: 30,
   sessionStartTime: null,
   seedConcept: null,
   isSeedSession: false,
-  roleReadiness: null,
 
   setMode: (mode) => set({ mode }),
   setQuestions: (questions) =>
@@ -167,9 +157,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   setSeedSession: (concept, isSeed) => set({ seedConcept: concept, isSeedSession: isSeed }),
 
-  setRoleReadiness: (readiness) => set({ roleReadiness: readiness }),
 
-  setHeatmapData: (data) => set({ heatmapData: data }),
   updateScore: (points) =>
     set((state) => ({ totalScore: state.totalScore + points })),
 
@@ -206,7 +194,6 @@ export const useSessionStore = create<SessionState>((set) => ({
       activeWalkthrough: null,
       clickedLine: null,
       understandLoading: false,
-      heatmapData: {},
       totalScore: 0,
       maxPossibleScore: 30,
       sessionStartTime: null,

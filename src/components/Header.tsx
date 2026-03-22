@@ -6,8 +6,10 @@ import type { SupportedLanguage } from "@/types/schemas";
 import { motion } from "framer-motion";
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { Beaker, Lightbulb, Sparkles, ChevronDown } from "lucide-react";
+import { Beaker, Lightbulb, Sparkles, ChevronDown, History } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import HistoryPanel from "./HistoryPanel";
+import { useHistoryStore } from "@/stores/historyStore";
 
 const BOILERPLATES: Record<SupportedLanguage, string> = {
   javascript: `// Add code in JavaScript\n\nconsole.log("Hello World!");`,
@@ -37,6 +39,12 @@ export default function Header() {
     useSessionStore();
 
   const [generatingSeed, setGeneratingSeed] = useState(false);
+  const [showSeedModal, setShowSeedModal] = useState(false);
+  const [seedConcept, setSeedConcept] = useState("");
+  const [seedDifficulty, setSeedDifficulty] = useState<"beginner" | "intermediate" | "advanced">("intermediate");
+  const [showHistory, setShowHistory] = useState(false);
+
+  const { sessions } = useHistoryStore();
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newLang = e.target.value as SupportedLanguage;
@@ -45,21 +53,17 @@ export default function Header() {
   };
 
   const handleGenerateSeed = async () => {
-    const concept = window.prompt("What concept do you want to understand? (e.g. async/await, closures, error handling)");
-    if (!concept) return;
-
-    const difficulty = window.prompt("Difficulty? (beginner / intermediate / advanced)", "intermediate");
-    if (!difficulty || !["beginner", "intermediate", "advanced"].includes(difficulty)) {
-      toast.error("Invalid difficulty. Choose beginner, intermediate, or advanced.");
+    if (!seedConcept.trim()) {
+      toast.error("Please enter a concept.");
       return;
     }
-
+    setShowSeedModal(false);
     setGeneratingSeed(true);
     try {
       const res = await fetch("/api/generate-seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concept, difficulty }),
+        body: JSON.stringify({ concept: seedConcept.trim(), difficulty: seedDifficulty }),
       });
 
       if (!res.ok) {
@@ -67,12 +71,38 @@ export default function Header() {
         throw new Error(errorData.error || "Generation failed");
       }
 
-      const { code } = await res.json();
-      setCode(code);
-      setSeedSession(concept, true);
-      toast.success(`Seed project for ${concept} generated!`);
-      
-      // Trivia mode is already active or we switch to it
+      const { code: generatedCode, language: detectedLang } = await res.json();
+      setCode(generatedCode);
+      if (detectedLang) setLanguage(detectedLang as SupportedLanguage);
+      setSeedSession(seedConcept.trim(), true);
+      toast.custom(
+        (t) => (
+          <div
+            className={`${
+              t.visible ? "animate-enter" : "animate-leave"
+            } max-w-md w-full bg-[#2a1306] border border-[#ea580c]/30 shadow-[0_20px_40px_-15px_rgba(234,88,12,0.2)] rounded-xl pointer-events-auto flex p-4 backdrop-blur-md`}
+          >
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-[#fb923c] font-black text-[11px] uppercase tracking-widest mb-1.5">
+                <Sparkles size={14} className="animate-pulse" /> Seed Session Active
+              </div>
+              <p className="text-[13px] text-[#e4e4e7] leading-relaxed">
+                This workspace was generated to teach: <span className="text-white font-bold">{seedConcept.trim()}</span>. 
+                It contains at least one intentional edge case.
+              </p>
+            </div>
+            <button
+              onClick={() => toast.dismiss(t.id)}
+              className="ml-4 text-[#a1a1aa] hover:text-[#fb923c] transition-colors self-start p-1"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        ),
+        { duration: 4000, position: "top-center" }
+      );
+      setSeedConcept("");
+      setSeedDifficulty("intermediate");
       setMode("trivia");
     } catch (error) {
       console.error("Seed error:", error);
@@ -124,7 +154,7 @@ export default function Header() {
         {/* Feature 1 — Seed Project Button */}
         <div className="hidden lg:flex absolute left-1/2 -translate-x-1/2 justify-center">
             <button
-                onClick={handleGenerateSeed}
+                onClick={() => setShowSeedModal(true)}
                 disabled={generatingSeed}
                 className="flex items-center gap-2 px-6 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-all shadow-md"
                 style={{ backgroundColor: "var(--dc-accent-blue)", color: "#fff" }}
@@ -139,7 +169,26 @@ export default function Header() {
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center justify-end gap-6 shrink-0 z-10">
+        <div className="flex items-center justify-end gap-3 shrink-0 z-10">
+          {/* History Button */}
+          <button
+            onClick={() => setShowHistory(true)}
+            className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all"
+            style={{ borderColor: "var(--dc-border)", color: "var(--dc-text-secondary)", backgroundColor: "var(--dc-bg-elevated)" }}
+            title="Session History"
+          >
+            <History size={14} />
+            <span className="hidden md:inline">History</span>
+            {sessions.length > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black"
+                style={{ backgroundColor: "var(--dc-accent-blue)", color: "#fff" }}
+              >
+                {sessions.length > 9 ? "9+" : sessions.length}
+              </span>
+            )}
+          </button>
+
           <ThemeToggle />
           
           {questions.length > 0 && (
@@ -213,6 +262,101 @@ export default function Header() {
           </button>
         </div>
       </div>
+
+      {/* Seed Generation Modal */}
+      {showSeedModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+          onClick={() => setShowSeedModal(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 12 }}
+            transition={{ type: "spring", stiffness: 350, damping: 28 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-xl border shadow-2xl p-6 flex flex-col gap-5"
+            style={{
+              backgroundColor: "var(--dc-bg-primary)",
+              borderColor: "var(--dc-border)",
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#0D9488] flex items-center justify-center shadow-lg">
+                <Sparkles size={16} color="white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold" style={{ color: "var(--dc-text-primary)" }}>Generate Learning Seed</p>
+                <p className="text-[11px]" style={{ color: "var(--dc-text-muted)" }}>Language is auto-detected from your concept</p>
+              </div>
+            </div>
+
+            {/* Concept Input */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dc-text-muted)" }}>Concept</label>
+              <input
+                autoFocus
+                type="text"
+                value={seedConcept}
+                onChange={(e) => setSeedConcept(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleGenerateSeed()}
+                placeholder="e.g. goroutines, closures, memory ownership…"
+                className="w-full px-3 py-2.5 rounded-lg border text-sm bg-transparent focus:outline-none focus:ring-2 focus:ring-[var(--dc-accent-blue)]"
+                style={{
+                  borderColor: "var(--dc-border)",
+                  color: "var(--dc-text-primary)",
+                  backgroundColor: "var(--dc-bg-elevated)",
+                }}
+              />
+            </div>
+
+            {/* Difficulty Selector */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dc-text-muted)" }}>Difficulty</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["beginner", "intermediate", "advanced"] as const).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setSeedDifficulty(d)}
+                    className="py-2 rounded-lg border text-xs font-bold uppercase tracking-wide transition-all"
+                    style={{
+                      borderColor: seedDifficulty === d ? "var(--dc-accent-blue)" : "var(--dc-border)",
+                      backgroundColor: seedDifficulty === d ? "var(--dc-accent-blue)" : "var(--dc-bg-elevated)",
+                      color: seedDifficulty === d ? "#fff" : "var(--dc-text-secondary)",
+                    }}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setShowSeedModal(false)}
+                className="flex-1 py-2.5 rounded-lg border text-xs font-bold uppercase tracking-wider transition-colors"
+                style={{ borderColor: "var(--dc-border)", color: "var(--dc-text-muted)", backgroundColor: "var(--dc-bg-elevated)" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGenerateSeed}
+                disabled={!seedConcept.trim()}
+                className="flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shadow-md disabled:opacity-50"
+                style={{ backgroundColor: "var(--dc-accent-blue)", color: "#fff" }}
+              >
+                Generate
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* History Drawer */}
+      {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
     </header>
   );
 }

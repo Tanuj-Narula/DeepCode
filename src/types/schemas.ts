@@ -105,9 +105,6 @@ export type SupportedLanguage = "javascript" | "typescript" | "python" | "java" 
 // ─── Mode Types ───
 export type AppMode = "trivia" | "understand";
 
-// ─── Heatmap Line Status ───
-export type HeatmapStatus = "green" | "amber" | "red" | "grey";
-
 // ─── Global History (for Role Assessment) ───
 export interface GlobalHistoryResult {
   timestamp: number;
@@ -142,3 +139,24 @@ export const MutationPredictionSchema = z.object({
 });
 
 export type MutationPrediction = z.infer<typeof MutationPredictionSchema>;
+
+// ─── History Session (persisted to localStorage) ───
+export interface HistoryQuestionResult {
+  conceptTag: string;
+  difficulty: string;
+  correct: boolean;
+  partial: boolean;
+  scoreAwarded: number;
+  hintsUsed: number;
+}
+
+export interface HistorySession {
+  id: string;
+  timestamp: number;
+  durationMs: number;
+  language: SupportedLanguage;
+  seedConcept: string | null;
+  totalScore: number;
+  maxPossibleScore: number;
+  results: HistoryQuestionResult[];
+}
