@@ -11,22 +11,35 @@ const SeedRequestSchema = z.object({
 
 // Heuristic map: concept keywords → best language
 const CONCEPT_TO_LANGUAGE: Array<{ keywords: string[]; language: SupportedLanguage }> = [
-  { keywords: ["goroutine", "channel", "concurrency", "go routine", "select", "waitgroup"], language: "go" },
+  { keywords: ["goroutine", "channel", "concurrency", "go routine", "select", "waitgroup", "golang"], language: "go" },
   { keywords: ["ownership", "borrow", "lifetime", "trait", "cargo", "unsafe", "memory safety", "rust"], language: "rust" },
   { keywords: ["pointer", "memory", "malloc", "template", "stl", "vector", "c++", "cpp", "destructor", "raii"], language: "cpp" },
   { keywords: ["thread", "jvm", "interface", "generics", "spring", "maven", "java", "inheritance", "polymorphism", "oop"], language: "java" },
   { keywords: ["list comprehension", "decorator", "generator", "pandas", "numpy", "asyncio", "python", "lambda", "dict", "slice"], language: "python" },
   { keywords: ["linq", "delegate", "async/await c#", "csharp", "c#", ".net", "nullable", "extension method"], language: "csharp" },
-  { keywords: ["type", "interface", "generic", "enum", "union", "typescript", "ts ", " ts"], language: "typescript" },
+  { keywords: ["typescript", "ts ", " ts", "type annotation", "interface", "generic", "enum", "union"], language: "typescript" },
+  { keywords: ["javascript", "js ", " js", "prototype", "closure", "event loop", "promise", "async/await js", "callback"], language: "javascript" },
 ];
 
-function detectLanguage(concept: string): SupportedLanguage {
+function detectLanguage(concept: string): SupportedLanguage | null {
   const lower = concept.toLowerCase();
+  
+  // Try to match specific words first to avoid substring issues (e.g., 'java' in 'javascript')
+  // We'll iterate through languages and check if keywords exist as whole words or specific markers
   for (const { keywords, language } of CONCEPT_TO_LANGUAGE) {
-    if (keywords.some((kw) => lower.includes(kw))) return language;
+    if (keywords.some((kw) => {
+      // If keyword is short or potentially a substring of others, use word boundaries
+      if (kw === "java" || kw === "js" || kw === "ts" || kw === "go") {
+        const regex = new RegExp(`\\b${kw}\\b`, 'i');
+        return regex.test(lower);
+      }
+      return lower.includes(kw);
+    })) {
+      return language;
+    }
   }
-  // Default to JavaScript for JS ecosystem concepts
-  return "javascript";
+  
+  return null;
 }
 
 const LANGUAGE_FUNCTION_STYLES: Record<SupportedLanguage, string> = {
@@ -56,7 +69,16 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { concept, difficulty, language: requestedLang } = SeedRequestSchema.parse(body);
 
-    const language: SupportedLanguage = (requestedLang as SupportedLanguage) || detectLanguage(concept);
+    // Prioritize detection, fallback to requested, then default
+    let language: SupportedLanguage = "javascript";
+    const detected = detectLanguage(concept);
+    
+    if (detected) {
+      language = detected;
+    } else if (requestedLang && Object.keys(LANGUAGE_FUNCTION_STYLES).includes(requestedLang)) {
+      language = requestedLang as SupportedLanguage;
+    }
+
     const style = LANGUAGE_FUNCTION_STYLES[language];
 
     const systemPrompt = `You are a coding educator. Generate a SINGLE self-contained code snippet in ${language.toUpperCase()} that is pedagogically designed to expose the full complexity of "${concept}" at ${difficulty} level.

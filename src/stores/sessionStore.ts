@@ -42,6 +42,7 @@ interface SessionState {
 
   // Session timing
   sessionStartTime: number | null;
+  elapsedTimeMs: number;
 
   // Seed Project Mode (Feature 1)
   seedConcept: string | null;
@@ -76,6 +77,7 @@ interface SessionState {
   // Actions — Reset
   resetTrivia: () => void;
   resetSession: () => void;
+  incrementElapsedTime: (ms: number) => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -100,6 +102,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   totalScore: 0,
   maxPossibleScore: 30,
   sessionStartTime: null,
+  elapsedTimeMs: 0,
   seedConcept: null,
   isSeedSession: false,
 
@@ -117,6 +120,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       triviaComplete: false,
       totalScore: 0,
       sessionStartTime: Date.now(),
+      elapsedTimeMs: 0,
     }),
   setCurrentQuestionIndex: (i) => set({ currentQuestionIndex: i }),
   setUserAnswer: (questionIndex, answer) =>
@@ -175,6 +179,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       triviaLoading: false,
       totalScore: 0,
       sessionStartTime: null,
+      elapsedTimeMs: 0,
     }),
 
   resetSession: () =>
@@ -197,5 +202,8 @@ export const useSessionStore = create<SessionState>((set) => ({
       totalScore: 0,
       maxPossibleScore: 30,
       sessionStartTime: null,
+      elapsedTimeMs: 0,
     }),
+  incrementElapsedTime: (ms) =>
+    set((state) => ({ elapsedTimeMs: state.elapsedTimeMs + ms })),
 }));

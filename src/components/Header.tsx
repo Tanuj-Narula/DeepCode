@@ -63,7 +63,11 @@ export default function Header() {
       const res = await fetch("/api/generate-seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concept: seedConcept.trim(), difficulty: seedDifficulty }),
+        body: JSON.stringify({ 
+          concept: seedConcept.trim(), 
+          difficulty: seedDifficulty,
+          language: language // Pass current language as a hint
+        }),
       });
 
       if (!res.ok) {

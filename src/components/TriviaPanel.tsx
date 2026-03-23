@@ -39,6 +39,8 @@ export default function TriviaPanel() {
     addSessionResult,
     setMode,
     sessionResults,
+    elapsedTimeMs,
+    incrementElapsedTime,
   } = useSessionStore();
 
   const [answerInput, setAnswerInput] = useState("");
@@ -47,17 +49,28 @@ export default function TriviaPanel() {
   const [evaluatingReadiness, setEvaluatingReadiness] = useState(false);
   const [completeTimeMs, setCompleteTimeMs] = useState<number | null>(null);
 
-  // Track session duration when it finishes to avoid impure render calls
+  // Active timer logic — only increments while session is active and window is focused
+  useEffect(() => {
+    if (questions.length === 0 || triviaComplete || triviaLoading) return;
+
+    const interval = setInterval(() => {
+      // Only count if tab is visible to avoid idle count
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        incrementElapsedTime(1000);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [questions.length, triviaComplete, triviaLoading, incrementElapsedTime]);
+
+  // Track session duration snapshot when it finishes
   useEffect(() => {
     if (triviaComplete && !completeTimeMs) {
-      const sessionStart = useSessionStore.getState().sessionStartTime;
-      if (sessionStart) {
-        setCompleteTimeMs(Date.now() - sessionStart);
-      }
+      setCompleteTimeMs(elapsedTimeMs);
     } else if (!triviaComplete && completeTimeMs !== null) {
       setCompleteTimeMs(null);
     }
-  }, [triviaComplete, completeTimeMs]);
+  }, [triviaComplete, completeTimeMs, elapsedTimeMs]);
 
   // Generate questions
   const handleGenerateQuestions = useCallback(async () => {
@@ -88,11 +101,12 @@ export default function TriviaPanel() {
   }, [scopedFunction, language, setQuestions, setTriviaLoading]);
 
   // Request hint
-  const handleRequestHint = useCallback(async (levelOverride?: 1 | 2 | 3) => {
-    const currentQ = questions[currentQuestionIndex];
+  const handleRequestHint = useCallback(async (levelOverride?: 1 | 2 | 3, indexOverride?: number, userAnswerOverride?: string) => {
+    const targetIndex = indexOverride ?? currentQuestionIndex;
+    const currentQ = questions[targetIndex];
     if (!currentQ) return;
 
-    const currentHintProgress = hintProgress[currentQuestionIndex];
+    const currentHintProgress = hintProgress[targetIndex];
     const nextLevel = (levelOverride || (currentHintProgress?.currentLevel ?? 0) + 1) as 1 | 2 | 3;
 
     if (nextLevel > 3) return;
@@ -109,7 +123,7 @@ export default function TriviaPanel() {
         body: JSON.stringify({
           question: currentQ.question,
           code: scopedFunction,
-          userAnswer: userAnswers[currentQuestionIndex] ?? answerInput ?? "",
+          userAnswer: userAnswerOverride ?? userAnswers[targetIndex] ?? answerInput ?? "",
           hintLevel: nextLevel,
           previousHints: previousHintTexts,
         }),
@@ -124,9 +138,11 @@ export default function TriviaPanel() {
         hints: [...(currentHintProgress?.hints ?? []), hint],
       };
 
-      addHint(currentQuestionIndex, updatedHints);
-    } catch {
+      addHint(targetIndex, updatedHints);
+    } catch (error) {
+      console.error("Hint error:", error);
       toast.error("Failed to generate hint");
+      throw error; // Re-throw so callers can handle failure
     } finally {
       setHintLoading(false);
     }
@@ -176,8 +192,8 @@ export default function TriviaPanel() {
           setWrongAttempt(currentQuestionIndex, attempts);
           toast.error(evaluation.partial ? "Partial answer. Hint incoming!" : "Incorrect. Here's a hint!");
           
-          // Auto-request hint
-          await handleRequestHint(attempts as 1 | 2 | 3);
+          // Auto-request hint (silent failure to not break evaluation flow)
+          handleRequestHint(attempts as 1 | 2 | 3, currentQuestionIndex, answerInput).catch(() => {});
           setAnswerInput(""); // Clear for retry
         } else {
           // 3rd failed attempt
@@ -187,7 +203,7 @@ export default function TriviaPanel() {
           setEvaluation(currentQuestionIndex, evaluation);
           updateScore(0);
           
-          await handleRequestHint(3); // Show final hint/explanation
+          handleRequestHint(3, currentQuestionIndex, answerInput).catch(() => {}); // Show final hint/explanation
           toast("Moved to next question (0 pts)", { icon: <BookOpen size={16} /> });
           setAnswerInput("");
         }
@@ -229,11 +245,16 @@ export default function TriviaPanel() {
       setEvaluation(currentQuestionIndex, skipEval);
       updateScore(0);
       
-      await handleRequestHint(3);
+      await handleRequestHint(3, currentQuestionIndex, "Skipped");
       toast("Question skipped (0 pts)", { icon: <XCircle size={16} /> });
       setAnswerInput("");
-    } catch {
-      toast.error("Failed to skip question");
+    } catch (error) {
+      console.error("Skip error:", error);
+      if (error instanceof Error && error.message === "Hint generation failed") {
+         toast("Question skipped, but explanation failed to load.", { icon: <Info size={16} /> });
+      } else {
+         toast.error("Failed to skip question");
+      }
     } finally {
       setEvaluating(false);
     }
@@ -261,7 +282,7 @@ export default function TriviaPanel() {
       useHistoryStore.getState().addSession({
         id: crypto.randomUUID(),
         timestamp: Date.now(),
-        durationMs: sessionState.sessionStartTime ? Date.now() - sessionState.sessionStartTime : 0,
+        durationMs: elapsedTimeMs,
         language,
         seedConcept: sessionState.seedConcept,
         totalScore,
@@ -288,6 +309,7 @@ export default function TriviaPanel() {
     maxPossibleScore,
     setCurrentQuestionIndex,
     setTriviaComplete,
+    elapsedTimeMs,
   ]);
 
   const currentQuestion = questions[currentQuestionIndex];

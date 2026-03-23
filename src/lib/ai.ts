@@ -41,24 +41,53 @@ export async function callAI({
   temperature = 0.7,
   maxTokens = 2000,
 }: AICallOptions): Promise<string> {
-  const groqApiKey = process.env.GROQ_API_KEY?.trim();
-  if (!groqApiKey) {
-    throw new Error("GROQ_API_KEY is not configured");
+  const groqKeys = [
+    process.env.GROQ_API_KEY?.trim(),
+    process.env.GROQ_API_KEY_SECONDARY?.trim(),
+  ].filter(Boolean) as string[];
+
+  const geminiKeys = [
+    process.env.GEMINI_API_KEY?.trim(),
+    process.env.GEMINI_API_KEY_SECONDARY?.trim(),
+  ].filter(Boolean) as string[];
+
+  if (groqKeys.length === 0 && geminiKeys.length === 0) {
+    throw new Error("No AI API keys configured (GROQ or GEMINI)");
   }
 
   const model = AI_MODELS[task];
 
-  try {
-    return await callGroq(groqApiKey, model, messages, temperature, maxTokens);
-  } catch (error) {
-    if (error instanceof AIRateLimitError) {
-      console.warn(`Groq rate-limited on ${model}, falling back to Gemini Flash`);
-      const geminiKey = process.env.GEMINI_API_KEY?.trim();
-      if (!geminiKey) throw new AIError("GEMINI_API_KEY not configured for fallback");
-      return await callGemini(geminiKey, messages, temperature, maxTokens);
+  // 1. Try Groq keys in order
+  for (const key of groqKeys) {
+    try {
+      return await callGroq(key, model, messages, temperature, maxTokens);
+    } catch (error) {
+      if (error instanceof AIRateLimitError) {
+        console.warn(`Groq key rate-limited on ${model}, trying next key if available...`);
+        continue;
+      }
+      // If it's a non-rate-limit error (e.g. invalid key), try the next key anyway
+      console.error(`Groq error with key:`, error instanceof Error ? error.message : error);
+      continue;
     }
-    throw error;
   }
+
+  // 2. Fallback to Gemini keys in order
+  console.warn("All Groq keys failed or exhausted, falling back to Gemini...");
+  for (const key of geminiKeys) {
+    try {
+      return await callGemini(key, messages, temperature, maxTokens);
+    } catch (error) {
+      if (error instanceof AIRateLimitError) {
+        console.warn(`Gemini key rate-limited, trying next key...`);
+        continue;
+      }
+      console.error(`Gemini error with key:`, error instanceof Error ? error.message : error);
+      continue;
+    }
+  }
+
+  throw new AIError("All AI providers and keys exhausted or rate-limited.");
 }
 
 async function callGroq(
