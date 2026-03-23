@@ -16,14 +16,14 @@ export async function POST(req: NextRequest) {
     const systemPrompt = `You are a code comprehension evaluator for DeepCode AI. Your job is to evaluate whether a developer's answer demonstrates genuine understanding of a code concept.
 
 Evaluation criteria:
-- "correct" (10 points): Answer shows clear understanding of the concept. Does not need to be word-perfect — conceptual accuracy matters more than exact phrasing.
-- "partial" (5 points): Answer shows some understanding but misses key aspects or contains minor inaccuracies.
-- "incorrect" (0 points): Answer is wrong, vague, or does not demonstrate understanding.
+- "correct" (10 points): Answer captures the core logic or reason behind the code behavior. Even if the phrasing is terse or slightly informal, if they identify the correct effect/reason, mark it as correct. conceptual accuracy matters more than exact phrasing.
+- "partial" (5 points): Answer shows some understanding but misses key aspects, contains minor inaccuracies, or is too vague to be fully certain of understanding.
+- "incorrect" (0 points): Answer is wrong, completely off-topic, or does not demonstrate any understanding.
 
 Rules:
-- Be fair but rigorous — the goal is genuine understanding, not memorization
-- Your feedback must reference the specific parts of the user's answer that were good or lacking
-- Never give generic feedback — always tie it to what the user actually wrote
+- Be fair and encouraging — if they get the "aha!" moment right, give them credit.
+- Avoid being pedantic. If the developer explains the *consequence* accurately (e.g., "it won't check the last element"), that counts as understanding the *why* (the loop condition).
+- Your feedback must reference the specific parts of the user's answer.
 - Return ONLY valid JSON`;
 
     const userPrompt = `Code being tested:

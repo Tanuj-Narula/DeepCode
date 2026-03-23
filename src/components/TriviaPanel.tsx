@@ -196,15 +196,14 @@ export default function TriviaPanel() {
           handleRequestHint(attempts as 1 | 2 | 3, currentQuestionIndex, answerInput).catch(() => {});
           setAnswerInput(""); // Clear for retry
         } else {
-          // 3rd failed attempt
+          // 3rd attempt — accept whatever we have
           setWrongAttempt(currentQuestionIndex, attempts);
           setUserAnswer(currentQuestionIndex, answerInput);
-          evaluation.score_awarded = 0; // Force 0 on 3rd failure
           setEvaluation(currentQuestionIndex, evaluation);
-          updateScore(0);
+          updateScore(evaluation.score_awarded);
           
           handleRequestHint(3, currentQuestionIndex, answerInput).catch(() => {}); // Show final hint/explanation
-          toast("Moved to next question (0 pts)", { icon: <BookOpen size={16} /> });
+          toast(`Moved to next question (+${evaluation.score_awarded} pts)`, { icon: <BookOpen size={16} /> });
           setAnswerInput("");
         }
       }
@@ -584,7 +583,7 @@ export default function TriviaPanel() {
         >
           <p className="text-sm" style={{ color: "var(--dc-info)" }}>
             <Lightbulb className="inline" size={16} /> <strong>Tip:</strong> Switch to{" "}
-            <strong>Understand</strong> mode to explore the concepts you&apos;re weak
+            <strong>Understand</strong>{" "}mode to explore the concepts you&apos;re weak
             on. Click any line for a detailed explanation.
           </p>
         </motion.div>
